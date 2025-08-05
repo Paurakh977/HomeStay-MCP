@@ -38,3 +38,12 @@ class CreateOfficerData(BaseModel):
     
     class Config:
         allow_population_by_field_name = True
+
+
+class UpdateOfficerPermissionsData(BaseModel):
+    officer_id: str = Field(..., alias="officerId")
+    permissions: Dict[str, bool]
+    admin_username: str = Field(..., alias="adminUsername")
+    
+    class Config:
+        allow_population_by_field_name = True
