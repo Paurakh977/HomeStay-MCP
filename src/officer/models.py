@@ -18,12 +18,12 @@ class Officer(BaseModel):
     username: str
     email: str
     contact_number: str = Field(..., alias="contactNumber")
-    role: str
+    role: Optional[str] = None  # Made optional since API doesn't always return it
     permissions: Dict[str, Any]  # More flexible to handle Map from MongoDB
     is_active: bool = Field(..., alias="isActive")
     parent_admin: str = Field(..., alias="parentAdmin")
     created_at: Any = Field(..., alias="createdAt")  # Can be string or datetime
-    updated_at: Any = Field(..., alias="updatedAt")  # Can be string or datetime
+    updated_at: Optional[Any] = Field(None, alias="updatedAt")  # Made optional since API doesn't always return it
     
     class Config:
         allow_population_by_field_name = True
