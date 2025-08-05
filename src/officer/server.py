@@ -1,5 +1,5 @@
 from mcp.server.fastmcp import FastMCP
-from .tools import create_officer, list_officers, update_officer_status, delete_officer
+from .tools import create_officer, list_officers, update_officer_status, delete_officer, update_officer_permissions
 from .models import CreateOfficerData, Officer
 from typing import Dict, Any
 
@@ -65,6 +65,7 @@ async def update_officer_status_tool(
 
 @mcp.tool(name="delete_officer")
 async def delete_officer_tool(
+    
     officer_id: str,
     admin_username: str,
     auth_token: str,
@@ -81,3 +82,25 @@ async def delete_officer_tool(
         A confirmation message.
     """
     return await delete_officer(officer_id, admin_username, auth_token)
+
+@mcp.tool(name="update_officer_permissions")
+async def update_officer_permissions_tool(
+    officer_id: str,
+    permissions: Dict[str, bool],
+    admin_username: str,
+    auth_token: str,
+) -> Officer:
+    """
+    Updates permissions for an EXISTING officer (does NOT create new officer).
+    Use this when you want to add/remove specific permissions.
+   
+    Args:
+        officer_id: The ID of the officer to update.
+        permissions: Dictionary of permissions to update (e.g., {"homestayApproval": True, "documentUpload": False}).
+        admin_username: The username of the admin updating the permissions.
+        auth_token: The authentication token for the admin (will be sent as cookie).
+
+    Returns:
+        The updated officer object.
+    """
+    return await update_officer_permissions(officer_id, permissions, admin_username, auth_token)
