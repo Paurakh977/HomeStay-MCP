@@ -3,6 +3,7 @@ from .models import HomestayFilterRequest, HomestayFilterResponse
 from .database import db_instance
 import re
 from datetime import datetime
+from .models import EnhancedFeatureSearchHelper
 
 async def build_mongodb_filter(filter_request: HomestayFilterRequest) -> Dict[str, Any]:
     """Build MongoDB filter from the filter request"""
@@ -210,19 +211,58 @@ async def build_mongodb_filter(filter_request: HomestayFilterRequest) -> Dict[st
     
     return mongo_filter
 
-async def filter_homestays(
+# Add this import at the top
+from .models import EnhancedFeatureSearchHelper
+
+async def build_enhanced_mongodb_filter(filter_request: HomestayFilterRequest) -> Dict[str, Any]:
+    """Enhanced MongoDB filter builder with natural language support"""
+    # Use the existing build_mongodb_filter and enhance it
+    mongo_filter = await build_mongodb_filter(filter_request)
+    
+    # Add enhanced filtering for "any" fields
+    if filter_request.any_local_attractions:
+        mongo_filter["features.localAttractions"] = {"$in": filter_request.any_local_attractions}
+    
+    if filter_request.any_tourism_services:
+        mongo_filter["features.tourismServices"] = {"$in": filter_request.any_tourism_services}
+    
+    if filter_request.any_infrastructure:
+        mongo_filter["features.infrastructure"] = {"$in": filter_request.any_infrastructure}
+    
+    # Feature access filters
+    if filter_request.feature_access:
+        for feature, enabled in filter_request.feature_access.items():
+            mongo_filter[f"featureAccess.{feature}"] = enabled
+    
+    # Team member count filters
+
+    if filter_request.min_team_members is not None:
+        mongo_filter["$expr"] = {"$gte": [{"$size": "$teamMembers"}, filter_request.min_team_members]}
+    
+    return mongo_filter
+
+async def filter_homestays(filter_request: HomestayFilterRequest) -> HomestayFilterResponse:
+    """Main homestay filtering function"""
+    return await enhanced_filter_homestays(filter_request)
+
+async def enhanced_filter_homestays(
     filter_request: HomestayFilterRequest
 ) -> HomestayFilterResponse:
     """
-    Filter homestays based on the provided criteria and return usernames.
-    
-    Args:
-        filter_request: The filtering criteria
-    
-    Returns:
-        HomestayFilterResponse containing filtered homestay usernames
+    Enhanced homestay filtering with natural language processing and suggestions.
     """
     try:
+        # Process natural language query if provided
+        if filter_request.natural_language_query:
+            nl_filters = EnhancedFeatureSearchHelper.enhanced_natural_query_processing(
+                filter_request.natural_language_query
+            )
+            
+            # Merge natural language filters with explicit filters
+            for key, value in nl_filters.items():
+                if not getattr(filter_request, key, None):
+                    setattr(filter_request, key, value)
+        
         # Connect to database
         db = await db_instance.connect()
         collection = db_instance.homestays
@@ -230,33 +270,63 @@ async def filter_homestays(
         if not collection:
             raise Exception("Failed to connect to homestays collection")
         
-        # Build MongoDB filter
-        mongo_filter = await build_mongodb_filter(filter_request)
+        # Build MongoDB filter with enhanced logic
+        mongo_filter = await build_enhanced_mongodb_filter(filter_request)
         
-        # Get total count of all homestays
+        # Get total count
         total_count = await collection.count_documents({})
         
-        # Get count of filtered homestays
+        # Get filtered count
         filtered_count = await collection.count_documents(mongo_filter)
         
-        # Execute query with pagination
+        # Execute query with sorting
+        sort_criteria = []
+        if filter_request.sort_by:
+            sort_direction = 1 if filter_request.sort_order == "asc" else -1
+            sort_criteria.append((filter_request.sort_by, sort_direction))
+        else:
+            # Default sorting by average rating (descending) and creation date
+            sort_criteria = [("averageRating", -1), ("createdAt", -1)]
+        
         cursor = collection.find(
             mongo_filter,
-            {"homestayId": 1, "_id": 0}  # Only return homestayId field
-        ).skip(filter_request.skip or 0).limit(filter_request.limit or 100)
+            {"homestayId": 1, "_id": 0}
+        ).sort(sort_criteria).skip(filter_request.skip or 0).limit(filter_request.limit or 100)
         
         # Extract usernames
         homestays = await cursor.to_list(length=None)
         usernames = [homestay.get("homestayId") for homestay in homestays if homestay.get("homestayId")]
         
+        # Generate suggestions for better filtering
+        suggestions = await generate_filter_suggestions(filter_request, filtered_count)
+        
         return HomestayFilterResponse(
             homestay_usernames=usernames,
             total_count=total_count,
-            filtered_count=filtered_count
+            filtered_count=filtered_count,
+            applied_filters=mongo_filter,
+            suggestions=suggestions
         )
         
     except Exception as e:
         raise Exception(f"Error filtering homestays: {str(e)}")
+
+async def generate_filter_suggestions(filter_request: HomestayFilterRequest, filtered_count: int) -> List[str]:
+    """Generate helpful suggestions for improving filter results"""
+    suggestions = []
+    
+    if filtered_count == 0:
+        suggestions.append("No homestays found. Try relaxing some criteria or using broader keywords.")
+        if filter_request.min_average_rating:
+            suggestions.append(f"Consider lowering the minimum rating from {filter_request.min_average_rating}")
+        if filter_request.local_attractions:
+            suggestions.append("Try using 'any_local_attractions' instead of requiring all attractions")
+    elif filtered_count > 100:
+        suggestions.append("Many results found. Consider adding more specific criteria for better matches.")
+        if not filter_request.min_average_rating:
+            suggestions.append("Add a minimum rating filter to find higher quality homestays")
+    
+    return suggestions
 
 async def get_homestay_stats() -> Dict[str, Any]:
     """
@@ -329,3 +399,13 @@ async def get_homestay_stats() -> Dict[str, Any]:
             
     except Exception as e:
         raise Exception(f"Error getting homestay statistics: {str(e)}")
+
+
+async def validate_address_relationships(filter_request: HomestayFilterRequest) -> Dict[str, str]:
+    """Validate and suggest corrections for address relationships"""
+    suggestions = {}
+    
+    # Add logic to check if district exists in specified province
+    # Add logic to check if municipality exists in specified district
+    
+    return suggestions

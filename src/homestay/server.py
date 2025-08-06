@@ -5,6 +5,7 @@ from .database import db_instance
 from typing import Dict, Any
 import os
 from contextlib import asynccontextmanager
+from .models import EnhancedFeatureSearchHelper
 
 # Create lifespan manager for database connection
 @asynccontextmanager
@@ -116,5 +117,72 @@ async def quick_filter_homestays_tool(
         amenities=amenities,
         limit=limit
     )
+    
+    return await filter_homestays(filter_request)
+
+
+@mcp.tool(name="filter_homestays_with_natural_language")
+async def filter_homestays_with_natural_language_tool(
+    natural_query: str = None,
+    **additional_filters
+) -> HomestayFilterResponse:
+    """
+    Filter homestays using natural language queries with automatic keyword extraction.
+    
+    This tool processes natural language queries and automatically maps them to database filters.
+    It understands keywords related to:
+    
+    LOCAL ATTRACTIONS (mention any of these keywords):
+    - Natural: "park", "river", "lake", "pond", "viewpoint", "wetland", "grassland"
+    - Cultural: "museum", "festival", "dance", "ritual", "traditional", "architecture"
+    - Food: "organic", "food", "dish", "recipe", "traditional food"
+    - Forest: "forest", "nature walk", "eco trail", "trail"
+    - Wildlife: "wildlife", "endangered", "bird", "birdwatching", "conservation"
+    - Adventure: "trekking", "hiking", "climbing", "safari", "fishing", "cycling"
+    
+    TOURISM SERVICES (mention any of these keywords):
+    - "welcome", "farewell", "accommodation", "gift", "souvenir", "token of love"
+    - "cultural program", "local food", "local dish"
+    
+    INFRASTRUCTURE (mention any of these keywords):
+    - "building", "room", "toilet", "bathroom", "transportation", "water"
+    - "security", "health", "communication", "mobile", "wifi", "internet"
+    
+    RATINGS AND COUNTS:
+    - "rating over 4", "4+ stars", "minimum rating 3.5"
+    - "team members over 4", "at least 3 team members"
+    
+    FEATURE ACCESS:
+    - "dashboard", "profile", "portal", "documents", "upload", "settings", "chat"
+    
+    BOOLEAN FLAGS:
+    - "verified", "featured"
+    
+    Example queries:
+    - "Find homestays with hiking trails and wildlife viewing, rating over 4"
+    - "Show me verified homestays with team members over 4 and gift services"
+    - "I want homestays with WiFi, traditional food, and cultural programs"
+    - "Find homestays near rivers with fishing and organic food"
+    
+    Args:
+        natural_query: Natural language description of desired homestay features
+        **additional_filters: Any additional specific filters to apply
+    
+    Returns:
+        HomestayFilterResponse with matching homestay usernames and metadata
+    """
+    
+    # Process natural language query
+    if natural_query:
+        extracted_filters = EnhancedFeatureSearchHelper.enhanced_natural_query_processing(natural_query)
+        # Merge with any additional filters
+        extracted_filters.update(additional_filters)
+        
+        filter_request = HomestayFilterRequest(
+            natural_language_query=natural_query,
+            **extracted_filters
+        )
+    else:
+        filter_request = HomestayFilterRequest(**additional_filters)
     
     return await filter_homestays(filter_request)
