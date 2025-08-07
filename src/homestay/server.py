@@ -326,3 +326,28 @@ async def get_homestay_statistics_tool() -> Dict[str, Any]:
         Dictionary containing comprehensive homestay statistics
     """
     return await get_homestay_stats()
+
+@mcp.tool(name="test_homestay_filtering")
+async def test_homestay_filtering_tool() -> Dict[str, Any]:
+    """
+    Run a suite of tests to validate the homestay filtering logic.
+    
+    This tool executes several checks:
+    1. Verifies the database connection and counts total documents.
+    2. Fetches a sample document to inspect its structure.
+    3. Tests exact matching for a full attraction string.
+    4. Tests partial matching for English and Nepali keywords.
+    5. Verifies the collection structure using the new helper function.
+
+    Returns:
+        A dictionary containing the results of each test.
+    """
+    from .tools import test_queries, verify_collection_structure
+    
+    print("--- Running Collection Structure Verification ---")
+    await verify_collection_structure()
+    
+    print("\n--- Running Test Queries ---")
+    await test_queries()
+    
+    return {"status": "completed", "message": "Tests executed. Check server logs for details."}

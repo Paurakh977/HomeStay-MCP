@@ -55,65 +55,24 @@ class EnhancedFeatureSearchHelper:
     
     # Comprehensive keyword mappings with synonyms and variations
     ATTRACTION_KEYWORDS = {
-        # Natural attractions
-        'park': ['National Parks & Conservation Areas/राष्ट्रिय निकुञ्ज तथा संरक्षित क्षेत्र'],
-        'national park': ['National Parks & Conservation Areas/राष्ट्रिय निकुञ्ज तथा संरक्षित क्षेत्र'],
-        'conservation': ['National Parks & Conservation Areas/राष्ट्रिय निकुञ्ज तथा संरक्षित क्षेत्र'],
-        'river': ['Major Rivers & Lakes/प्रमुख नदी तथा तालहरू'],
-        'lake': ['Major Rivers & Lakes/प्रमुख नदी तथा तालहरू'],
-        'pond': ['Ponds/पोखरी'],
-        'viewpoint': ['Viewpoint Tower/दृश्यावलोकन स्थल (भ्यू टावर)'],
-        'tower': ['Viewpoint Tower/दृश्यावलोकन स्थल (भ्यू टावर)'],
-        'wetland': ['Watchtowers, wetlands, and grasslands/मचान तथा सिमसार क्षेत्र, घासे मैदान'],
-        'grassland': ['Watchtowers, wetlands, and grasslands/मचान तथा सिमसार क्षेत्र, घासे मैदान'],
-        
-        # Cultural attractions
-        'museum': ['Museums & Cultural Centers/आदिवासी संग्रहालय तथा संस्कृति केन्द्रहरू'],
-        'cultural center': ['Museums & Cultural Centers/आदिवासी संग्रहालय तथा संस्कृति केन्द्रहरू'],
-        'festival': ['Traditional Festivals, Dances & Rituals/परम्परागत पर्व, नाच तथा विधिहरू'],
-        'dance': ['Traditional Festivals, Dances & Rituals/परम्परागत पर्व, नाच तथा विधिहरू'],
-        'ritual': ['Traditional Festivals, Dances & Rituals/परम्परागत पर्व, नाच तथा विधिहरू'],
-        'traditional': ['Traditional Festivals, Dances & Rituals/परम्परागत पर्व, नाच तथा विधिहरू', 
-                       'Traditional Dishes & Recipes/परम्परागत परिकारहरू'],
-        'lifestyle': ['Local Community Lifestyle & Architecture/स्थानीय जीवनशैली तथा वास्तुकला'],
-        'architecture': ['Local Community Lifestyle & Architecture/स्थानीय जीवनशैली तथा वास्तुकला'],
-        
-        # Food and products
-        'organic': ['Organic Food/Organic खाना'],
-        'food': ['Organic Food/Organic खाना', 'Traditional Dishes & Recipes/परम्परागत परिकारहरू'],
-        'dish': ['Traditional Dishes & Recipes/परम्परागत परिकारहरू'],
-        'recipe': ['Traditional Dishes & Recipes/परम्परागत परिकारहरू'],
-        
-        # Forest and nature
-        'forest': ['Community-managed Forests/सामुदायिक वन क्षेत्रहरू'],
-        'nature walk': ['Nature Walks & Eco Trails/प्रकृति पदमार्ग तथा पदयात्रा'],
-        'eco trail': ['Nature Walks & Eco Trails/प्रकृति पदमार्ग तथा पदयात्रा'],
-        'trail': ['Nature Walks & Eco Trails/प्रकृति पदमार्ग तथा पदयात्रा'],
-        
-        # Wildlife
-        'wildlife': ['Iconic & Endangered Wildlife/प्रमुख तथा लोपोन्मुख जनावरहरू', 
-                    'Community-led Wildlife Conservation/सामुदायिक वन्यजन्तु संरक्षण प्रयासहरू'],
-        'endangered': ['Iconic & Endangered Wildlife/प्रमुख तथा लोपोन्मुख जनावरहरू'],
-        'bird': ['Birdwatching Hotspots/चराचुरुङ्गी हेर्ने स्थानहरू'],
-        'birdwatching': ['Birdwatching Hotspots/चराचुरुङ्गी हेर्ने स्थानहरू'],
-        'conservation': ['Community-led Wildlife Conservation/सामुदायिक वन्यजन्तु संरक्षण प्रयासहरू'],
-        
-        # Adventure activities
-        'trekking': ['Trekking, Climbing & Hiking Routes/ट्रेकिङ, आरोहण तथा हाइकिङ मार्गहरू'],
-        'hiking': ['Trekking, Climbing & Hiking Routes/ट्रेकिङ, आरोहण तथा हाइकिङ मार्गहरू'],
-        'climbing': ['Trekking, Climbing & Hiking Routes/ट्रेकिङ, आरोहण तथा हाइकिङ मार्गहरू'],
-        'eco-tourism': ['Eco-tourism based exploration/Eco-tourism based exploration'],
-        'boating': ['Adventure Sports like: Boating, Hiking, Jungle Walk, Elephant Safari, Jeep Safari/साहसिक खेलहरू (जस्तै: बोटिङ, हाइकिङ, जंगल वाक, हात्ती सफारी, जीप सफारी)'],
-        'safari': ['Adventure Sports like: Boating, Hiking, Jungle Walk, Elephant Safari, Jeep Safari/साहसिक खेलहरू (जस्तै: बोटिङ, हाइकिङ, जंगल वाक, हात्ती सफारी, जीप सफारी)',
-                  'Jungle Walks & Wildlife Safaris/जंगल पदयात्रा तथा सफारी'],
-        'elephant': ['Adventure Sports like: Boating, Hiking, Jungle Walk, Elephant Safari, Jeep Safari/साहसिक खेलहरू (जस्तै: बोटिङ, हाइकिङ, जंगल वाक, हात्ती सफारी, जीप सफारी)'],
-        'jeep': ['Adventure Sports like: Boating, Hiking, Jungle Walk, Elephant Safari, Jeep Safari/साहसिक खेलहरू (जस्तै: बोटिङ, हाइकिङ, जंगल वाक, हात्ती सफारी, जीप सफारी)'],
-        'fishing': ['Fishing in the fish pond/माछा पोखरीमा फिसिङ'],
-        'jungle walk': ['Jungle Walks & Wildlife Safaris/जंगल पदयात्रा तथा सफारी'],
-        'sunset': ['Sunset/Sunrise Viewing Points/सूर्यास्त/सूर्योदय हेर्ने स्थानहरू'],
-        'sunrise': ['Sunset/Sunrise Viewing Points/सूर्यास्त/सूर्योदय हेर्ने स्थानहरू'],
-        'cycling': ['Cultural Village Tours, Cycling & Local Mobility/गाउँ सयर, साइकल यात्रा, स्थानीय सवारी अनुभव'],
-        'village tour': ['Cultural Village Tours, Cycling & Local Mobility/गाउँ सयर, साइकल यात्रा, स्थानीय सवारी अनुभव'],
+        # Use partial matching keywords that will work with regex
+        'trekking': ['Trekking', 'Climbing', 'Hiking'],
+        'hiking': ['Trekking', 'Climbing', 'Hiking'],
+        'climbing': ['Trekking', 'Climbing', 'Hiking'],
+        'park': ['National Parks', 'Conservation Areas'],
+        'national park': ['National Parks', 'Conservation Areas'],
+        'river': ['Rivers', 'Lakes'],
+        'lake': ['Rivers', 'Lakes'],
+        'viewpoint': ['Viewpoint Tower', 'दृश्यावलोकन'],
+        'museum': ['Museums', 'Cultural Centers', 'संग्रहालय'],
+        'cultural': ['Cultural', 'सांस्कृतिक'],
+        'organic': ['Organic Food', 'Organic'],
+        'food': ['Food', 'खाना', 'परिकारहरू'],
+        'forest': ['Forest', 'वन'],
+        'wildlife': ['Wildlife', 'वन्यजन्तु'],
+        'bird': ['Bird', 'चराचुरुङ्गी'],
+        'safari': ['Safari', 'सफारी'],
+        'fishing': ['Fishing', 'फिसिङ']
     }
     
     SERVICE_KEYWORDS = {

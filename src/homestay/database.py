@@ -53,15 +53,41 @@ class HomestayDatabase:
     
     @property
     def homestays(self):
-        """Get the homestays collection"""
+        """Get the homestays collection - VERIFY THIS NAME"""
         if self._db is not None:
-            return self._db['Homestays Collection']
+            # Check if this is the correct collection name in your database
+            return self._db['Homestays Collection']  # Verify this matches your actual collection
         return None
     
     @property
     def is_connected(self):
         """Check if database is connected"""
         return self._connected and self._client is not None and self._db is not None
+
+    async def verify_collection_structure(self):
+        """Debug function to verify collection structure"""
+        try:
+            if not self.is_connected:
+                await self.connect()
+
+            collections = await self._db.list_collection_names()
+            print(f"🔍 Available collections: {collections}")
+            
+            collection_name = 'Homestays Collection'
+            if collection_name in collections:
+                sample_doc = await self._db[collection_name].find_one()
+                if sample_doc:
+                    print(f"🔍 Sample document structure for '{collection_name}':")
+                    print(f"  - Keys: {list(sample_doc.keys())}")
+                    if 'features' in sample_doc and isinstance(sample_doc.get('features'), dict):
+                        print(f"  - Features keys: {list(sample_doc['features'].keys())}")
+                        if 'localAttractions' in sample_doc['features']:
+                            print(f"  - Sample Local Attractions: {sample_doc['features']['localAttractions'][:2]}...")
+            else:
+                print(f"⚠️ Collection '{collection_name}' not found in database '{self._db.name}'")
+            
+        except Exception as e:
+            print(f"🔍 Error verifying collection: {e}")
 
 # Global database instance
 db_instance = HomestayDatabase()
