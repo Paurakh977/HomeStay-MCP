@@ -200,6 +200,41 @@ async def build_mongodb_filter(filter_request: HomestayFilterRequest) -> Dict[st
     if filter_request.website:
         mongo_filter["website"] = {"$regex": filter_request.website, "$options": "i"}
     
+    # Team member count filters
+    if filter_request.min_team_members is not None:
+        if "$expr" in mongo_filter:
+            existing_expr = mongo_filter["$expr"]
+            mongo_filter["$expr"] = {
+                "$and": [
+                    existing_expr,
+                    {"$gte": [{"$size": {"$ifNull": ["$teamMembers", []]}}, filter_request.min_team_members]}
+                ]
+            }
+        else:
+            mongo_filter["$expr"] = {"$gte": [{"$size": {"$ifNull": ["$teamMembers", []]}}, filter_request.min_team_members]}
+    
+    if filter_request.max_team_members is not None:
+        if "$expr" in mongo_filter:
+            existing_expr = mongo_filter["$expr"]
+            mongo_filter["$expr"] = {
+                "$and": [
+                    existing_expr,
+                    {"$lte": [{"$size": {"$ifNull": ["$teamMembers", []]}}, filter_request.max_team_members]}
+                ]
+            }
+        else:
+            mongo_filter["$expr"] = {"$lte": [{"$size": {"$ifNull": ["$teamMembers", []]}}, filter_request.max_team_members]}
+    
+    # New field filters
+    if filter_request.operator_gender is not None:
+        mongo_filter["operatorGender"] = filter_request.operator_gender
+    
+    if filter_request.is_committee_driven is not None:
+        mongo_filter["isCommitteeDriven"] = filter_request.is_committee_driven
+    
+    if filter_request.availability_status is not None:
+        mongo_filter["availabilityStatus"] = filter_request.availability_status
+    
     # Custom field filters
     if filter_request.custom_fields:
         for field_id, value in filter_request.custom_fields.items():
@@ -234,12 +269,8 @@ async def build_enhanced_mongodb_filter(filter_request: HomestayFilterRequest) -
         for feature, enabled in filter_request.feature_access.items():
             mongo_filter[f"featureAccess.{feature}"] = enabled
     
-    # Team member count filters
-
-    if filter_request.min_team_members is not None:
-        mongo_filter["$expr"] = {"$gte": [{"$size": "$teamMembers"}, filter_request.min_team_members]}
-    
     return mongo_filter
+
 
 async def filter_homestays(filter_request: HomestayFilterRequest) -> HomestayFilterResponse:
     """Main homestay filtering function"""
@@ -263,12 +294,12 @@ async def enhanced_filter_homestays(
                 if not getattr(filter_request, key, None):
                     setattr(filter_request, key, value)
         
-        # Connect to database
-        db = await db_instance.connect()
+        # Use existing database connection
         collection = db_instance.homestays
         
-        if not collection:
-            raise Exception("Failed to connect to homestays collection")
+        # Validate collection availability
+        if collection is None or not db_instance.is_connected:
+            raise Exception("Database not connected. Please ensure the server is properly initialized.")
         
         # Build MongoDB filter with enhanced logic
         mongo_filter = await build_enhanced_mongodb_filter(filter_request)
@@ -301,10 +332,10 @@ async def enhanced_filter_homestays(
         suggestions = await generate_filter_suggestions(filter_request, filtered_count)
         
         return HomestayFilterResponse(
-            homestay_usernames=usernames,
-            total_count=total_count,
-            filtered_count=filtered_count,
-            applied_filters=mongo_filter,
+            homestayUsernames=usernames,
+            totalCount=total_count,
+            filteredCount=filtered_count,
+            appliedFilters=mongo_filter,
             suggestions=suggestions
         )
         
@@ -336,11 +367,12 @@ async def get_homestay_stats() -> Dict[str, Any]:
         Dictionary containing homestay statistics
     """
     try:
-        db = await db_instance.connect()
+        # Use existing database connection
         collection = db_instance.homestays
         
-        if not collection:
-            raise Exception("Failed to connect to homestays collection")
+        # Validate collection availability
+        if collection is None or not db_instance.is_connected:
+            raise Exception("Database not connected. Please ensure the server is properly initialized.")
         
         # Aggregate statistics
         pipeline = [
