@@ -250,117 +250,128 @@ async def build_mongodb_filter(filter_request: HomestayFilterRequest) -> Dict[st
 from .models import EnhancedFeatureSearchHelper
 
 async def build_enhanced_mongodb_filter(filter_request: HomestayFilterRequest) -> Dict[str, Any]:
-    """Enhanced MongoDB filter builder with natural language support and partial matching"""
-    mongo_filter = await build_mongodb_filter(filter_request)
-
-    # Helper to create regex conditions for partial matching
-    def create_partial_match_conditions(field, terms):
-        conditions = []
-        for term in terms:
-            # Escape special characters for regex, especially the forward slash
-            escaped_term = term.replace("/", "\\/")
-            conditions.append({field: {"$regex": escaped_term, "$options": "i"}})
-        return conditions
-
-    # Combine all $or conditions
-    or_conditions = mongo_filter.get("$or", [])
-
-    # Enhanced filtering for "any" fields with partial matching
+    """Enhanced MongoDB filter builder with FIXED partial matching"""
+    mongo_filter = {}
+    lang = filter_request.language or "en"
+    
+    # Build base filters first (location, status, etc.)
+    base_filter = await build_basic_filters(filter_request)
+    mongo_filter.update(base_filter)
+    
+    # FIXED: Combine all OR conditions properly
+    or_conditions = []
+    
+    # Handle "any_local_attractions" with partial matching
     if filter_request.any_local_attractions:
-        or_conditions.extend(create_partial_match_conditions(
-            "features.localAttractions", filter_request.any_local_attractions
-        ))
-
-    if filter_request.any_tourism_services:
-        or_conditions.extend(create_partial_match_conditions(
-            "features.tourismServices", filter_request.any_tourism_services
-        ))
-
+        for attraction in filter_request.any_local_attractions:
+            # Create partial match for each attraction
+            or_conditions.append({
+                "features.localAttractions": {
+                    "$regex": attraction.replace("/", "\\/"),
+                    "$options": "i"
+                }
+            })
+    
+    # Handle "local_attractions" (all must match) - FIXED LOGIC
+    if filter_request.local_attractions:
+        # Convert to partial matches and combine with AND logic
+        and_conditions = []
+        for attraction in filter_request.local_attractions:
+            and_conditions.append({
+                "features.localAttractions": {
+                    "$regex": attraction.replace("/", "\\/"),
+                    "$options": "i"
+                }
+            })
+        if and_conditions:
+            mongo_filter["$and"] = and_conditions
+    
+    # Similarly fix infrastructure and services
     if filter_request.any_infrastructure:
-        or_conditions.extend(create_partial_match_conditions(
-            "features.infrastructure", filter_request.any_infrastructure
-        ))
-
+        for infra in filter_request.any_infrastructure:
+            or_conditions.append({
+                "features.infrastructure": {
+                    "$regex": infra.replace("/", "\\/"),
+                    "$options": "i"
+                }
+            })
+    
+    if filter_request.any_tourism_services:
+        for service in filter_request.any_tourism_services:
+            or_conditions.append({
+                "features.tourismServices": {
+                    "$regex": service.replace("/", "\\/"),
+                    "$options": "i"
+                }
+            })
+    
+    # Apply OR conditions if any exist
     if or_conditions:
         mongo_filter["$or"] = or_conditions
-
-    # Feature access filters
-    if filter_request.feature_access:
-        for feature, enabled in filter_request.feature_access.items():
-            mongo_filter[f"featureAccess.{feature}"] = enabled
-            
+    
     return mongo_filter
+
+async def build_basic_filters(filter_request: HomestayFilterRequest) -> Dict[str, Any]:
+    """Build non-conflicting basic filters"""
+    filters = {}
+    lang = filter_request.language or "en"
+    
+    # Location filters
+    if filter_request.province:
+        filters[f"address.province.{lang}"] = {
+            "$regex": filter_request.province, "$options": "i"
+        }
+    
+    if filter_request.district:
+        filters[f"address.district.{lang}"] = {
+            "$regex": filter_request.district, "$options": "i"
+        }
+    
+    # Default to approved status
+    if filter_request.status:
+        filters["status"] = filter_request.status
+    elif "status" not in filters:
+        filters["status"] = "approved"
+    
+    # Add other basic filters (ratings, capacity, etc.)
+    if filter_request.min_average_rating:
+        filters["averageRating"] = {"$gte": filter_request.min_average_rating}
+    
+    return filters
 
 
 async def filter_homestays(filter_request: HomestayFilterRequest) -> HomestayFilterResponse:
     """Main homestay filtering function"""
     return await enhanced_filter_homestays(filter_request)
 
-async def enhanced_filter_homestays(
-    filter_request: HomestayFilterRequest
-) -> HomestayFilterResponse:
-    """
-    Enhanced homestay filtering with natural language processing and suggestions.
-    """
+async def enhanced_filter_homestays(filter_request: HomestayFilterRequest) -> HomestayFilterResponse:
+    """Enhanced homestay filtering with DETAILED DEBUGGING"""
     try:
-        # DEBUG: Print the incoming request
-        print(f"🔍 DEBUGGING - Filter Request: {filter_request.dict(exclude_none=True)}")
-
-        # Process natural language query if provided
-        if filter_request.natural_language_query:
-            nl_filters = EnhancedFeatureSearchHelper.enhanced_natural_query_processing(
-                filter_request.natural_language_query
-            )
-            print(f"🔍 DEBUGGING - NL Filters: {nl_filters}")
-            
-            # Merge natural language filters with explicit filters
-            for key, value in nl_filters.items():
-                # Special handling for list-based filters to merge them
-                if isinstance(value, list) and hasattr(filter_request, key):
-                    existing_value = getattr(filter_request, key)
-                    if existing_value:
-                        setattr(filter_request, key, list(set(existing_value + value)))
-                    else:
-                        setattr(filter_request, key, value)
-                elif not getattr(filter_request, key, None):
-                    setattr(filter_request, key, value)
-
-        # Use existing database connection
-        collection = db_instance.homestays
+        print(f"🔍 INPUT - Filter Request: {filter_request.dict(exclude_none=True)}")
         
-        # Validate collection availability
-        if collection is None or not db_instance.is_connected:
-            raise Exception("Database not connected. Please ensure the server is properly initialized.")
-        
-        # Build MongoDB filter with enhanced logic
+        # Build MongoDB filter
         mongo_filter = await build_enhanced_mongodb_filter(filter_request)
-        print(f"🔍 DEBUGGING - MongoDB Filter: {mongo_filter}")
+        print(f"🔍 MONGODB - Generated Filter: {mongo_filter}")
+        
+        collection = db_instance.homestays
 
+        # Test individual components
+        if mongo_filter.get("$or"):
+            print(f"🔍 OR CONDITIONS - Count: {len(mongo_filter['$or'])}")
+            for i, condition in enumerate(mongo_filter["$or"]):
+                test_count = await collection.count_documents(condition)
+                print(f"🔍 OR[{i}] - {condition} → Count: {test_count}")
+        
+        # Execute main query
+        filtered_count = await collection.count_documents(mongo_filter)
+        print(f"🔍 RESULT - Filtered count: {filtered_count}")
+        
+        # If no results, run diagnostic queries
+        if filtered_count == 0:
+            await run_diagnostic_queries(filter_request, mongo_filter)
+        
         # Get total count
         total_count = await collection.count_documents({})
-        print(f"🔍 DEBUGGING - Total documents in collection: {total_count}")
-
-        # Get filtered count
-        filtered_count = await collection.count_documents(mongo_filter)
-        print(f"🔍 DEBUGGING - Filtered count: {filtered_count}")
-
-        # If no results, try broader queries for debugging
-        if filtered_count == 0:
-            print("🔍 DEBUGGING - No results found, testing simpler queries...")
-            
-            # Test without status filter
-            test_filter_no_status = {k: v for k, v in mongo_filter.items() if k != 'status'}
-            if test_filter_no_status:
-                test_count_no_status = await collection.count_documents(test_filter_no_status)
-                print(f"🔍 DEBUGGING - Count without status filter: {test_count_no_status}")
-            
-            # Test individual filter components
-            for key, value in mongo_filter.items():
-                try:
-                    individual_count = await collection.count_documents({key: value})
-                    print(f"🔍 DEBUGGING - Filter '{key}': {value} -> Count: {individual_count}")
-                except Exception as e:
-                    print(f"🔍 DEBUGGING - Error testing filter '{key}': {e}")
 
         # Execute query with sorting
         sort_criteria = []
@@ -397,6 +408,28 @@ async def enhanced_filter_homestays(
         print(f"💥 ERROR in enhanced_filter_homestays: {e}")
         print(traceback.format_exc())
         raise Exception(f"Error filtering homestays: {str(e)}")
+
+async def run_diagnostic_queries(filter_request, mongo_filter):
+    """Run diagnostic queries to understand why no results found"""
+    collection = db_instance.homestays
+    
+    # Test without status filter
+    no_status_filter = {k: v for k, v in mongo_filter.items() if k != 'status'}
+    if no_status_filter:
+        count = await collection.count_documents(no_status_filter)
+        print(f"🔍 DIAGNOSTIC - Without status filter: {count}")
+    
+    # Test with broader regex patterns
+    if filter_request.any_local_attractions:
+        for attraction in filter_request.any_local_attractions:
+            broad_filter = {
+                "features.localAttractions": {
+                    "$regex": attraction.split(),  # Just first word
+                    "$options": "i"
+                }
+            }
+            count = await collection.count_documents(broad_filter)
+            print(f"🔍 DIAGNOSTIC - Broad match '{attraction.split()}': {count}")
 
 async def generate_filter_suggestions(filter_request: HomestayFilterRequest, filtered_count: int) -> List[str]:
     """Generate helpful suggestions for improving filter results"""
@@ -467,7 +500,7 @@ async def get_homestay_stats() -> Dict[str, Any]:
         result = await collection.aggregate(pipeline).to_list(length=1)
         
         if result:
-            stats = result[0]
+            stats = result
             stats.pop("_id", None)  # Remove the _id field
             return stats
         else:

@@ -55,102 +55,64 @@ class EnhancedFeatureSearchHelper:
     
     # Comprehensive keyword mappings with synonyms and variations
     ATTRACTION_KEYWORDS = {
-        # Use partial matching keywords that will work with regex
-        'trekking': ['Trekking', 'Climbing', 'Hiking'],
-        'hiking': ['Trekking', 'Climbing', 'Hiking'],
-        'climbing': ['Trekking', 'Climbing', 'Hiking'],
-        'park': ['National Parks', 'Conservation Areas'],
-        'national park': ['National Parks', 'Conservation Areas'],
-        'river': ['Rivers', 'Lakes'],
-        'lake': ['Rivers', 'Lakes'],
-        'viewpoint': ['Viewpoint Tower', 'दृश्यावलोकन'],
-        'museum': ['Museums', 'Cultural Centers', 'संग्रहालय'],
-        'cultural': ['Cultural', 'सांस्कृतिक'],
-        'organic': ['Organic Food', 'Organic'],
-        'food': ['Food', 'खाना', 'परिकारहरू'],
-        'forest': ['Forest', 'वन'],
-        'wildlife': ['Wildlife', 'वन्यजन्तु'],
-        'bird': ['Bird', 'चराचुरुङ्गी'],
-        'safari': ['Safari', 'सफारी'],
-        'fishing': ['Fishing', 'फिसिङ']
+        # Use shorter, more flexible keywords that will match substrings
+        'hiking': ['Hiking', 'ट्रेकिङ', 'हाइकिङ'],
+        'trekking': ['Trekking', 'ट्रेकिङ', 'हाइकिङ'],
+        'climbing': ['Climbing', 'आरोहण'],
+        'fishing': ['Fishing', 'फिसिङ', 'माछा'],
+        'museum': ['Museum', 'संग्रहालय', 'Cultural Centers'],
+        'bird': ['Bird', 'चराचुरुङ्गी', 'Birdwatching'],
+        'park': ['National Parks', 'Conservation', 'निकुञ्ज'],
+        'river': ['Rivers', 'Lakes', 'नदी', 'तालहरू'],
+        'viewpoint': ['Viewpoint', 'दृश्यावलोकन', 'Tower'],
+        'organic': ['Organic', 'Food', 'खाना'],
+        'forest': ['Forest', 'वन', 'Nature Walks'],
+        'safari': ['Safari', 'सफारी', 'Wildlife'],
+        'cultural': ['Cultural', 'सांस्कृतिक', 'Traditional']
     }
-    
-    SERVICE_KEYWORDS = {
-        'welcome': ['Welcome and Farewell/स्वागत तथा विदाई'],
-        'farewell': ['Welcome and Farewell/स्वागत तथा विदाई'],
-        'accommodation': ['Comfortable Accommodation/आरामदायी आवास'],
-        'comfortable': ['Comfortable Accommodation/आरामदायी आवास'],
-        'gift': ['Gift or Souvenir/मायाको चिनो (उपहार)'],
-        'souvenir': ['Gift or Souvenir/मायाको चिनो (उपहार)'],
-        'token of love': ['Gift or Souvenir/मायाको चिनो (उपहार)'],
-        'cultural program': ['Traditional Cultural Program/परम्परागत सांस्कृतिक कार्यक्रम'],
-        'program': ['Traditional Cultural Program/परम्परागत सांस्कृतिक कार्यक्रम'],
-        'local food': ['Local Dishes/स्थानीय परिकारहरू'],
-        'local dish': ['Local Dishes/स्थानीय परिकारहरू'],
-        'dish': ['Local Dishes/स्थानीय परिकारहरू'],
-    }
-    
+
     INFRASTRUCTURE_KEYWORDS = {
-        'building': ['Community Building/सामुदायिक भवन'],
-        'community building': ['Community Building/सामुदायिक भवन'],
-        'room': ['Guest Room, Toilet, Bathroom/पाहुना कोठा, शौचालय, स्नानघर'],
-        'guest room': ['Guest Room, Toilet, Bathroom/पाहुना कोठा, शौचालय, स्नानघर'],
-        'toilet': ['Guest Room, Toilet, Bathroom/पाहुना कोठा, शौचालय, स्नानघर'],
-        'bathroom': ['Guest Room, Toilet, Bathroom/पाहुना कोठा, शौचालय, स्नानघर'],
-        'transportation': ['Transportation Facility/यातायात सुविधा'],
-        'transport': ['Transportation Facility/यातायात सुविधा'],
-        'water': ['Drinking Water and Solar Lighting/खानेपानी तथा सोलार बत्ती'],
-        'drinking water': ['Drinking Water and Solar Lighting/खानेपानी तथा सोलार बत्ती'],
-        'solar': ['Drinking Water and Solar Lighting/खानेपानी तथा सोलार बत्ती'],
-        'lighting': ['Drinking Water and Solar Lighting/खानेपानी तथा सोलार बत्ती'],
-        'security': ['Security Post (Nepaltar)/सुरक्षा चौकी (नेपालटार)'],
-        'security post': ['Security Post (Nepaltar)/सुरक्षा चौकी (नेपालटार)'],
-        'health': ['Health Post (Udayapurgadhi)/स्वास्थ्य चौकी (उदयपुरगढी)'],
-        'health post': ['Health Post (Udayapurgadhi)/स्वास्थ्य चौकी (उदयपुरगढी)'],
-        'communication': ['Communication Facility (Mobile)/सञ्चार सुविधा (मोबाइल)'],
-        'mobile': ['Communication Facility (Mobile)/सञ्चार सुविधा (मोबाइल)'],
-        'wifi': ['Communication Facility (Mobile)/सञ्चार सुविधा (मोबाइल)'],
-        'internet': ['Communication Facility (Mobile)/सञ्चार सुविधा (मोबाइल)'],
-        'good toilet': ['Guest Room, Toilet, Bathroom/पाहुना कोठा, शौचालय, स्नानघर'],
-        'clean toilet': ['Guest Room, Toilet, Bathroom/पाहुना कोठा, शौचालय, स्नानघर'],
-        'committee-driven': ['Community Building/सामुदायिक भवन'],
-        'committee driven': ['Community Building/सामुदायिक भवन'],
+        'toilet': ['Toilet', 'Bathroom', 'शौचालय', 'स्नानघर'],
+        'water': ['Drinking Water', 'खानेपानी', 'Water'],
+        'solar': ['Solar', 'Lighting', 'बत्ती'],
+        'communication': ['Communication', 'Mobile', 'सञ्चार'],
+        'wifi': ['Communication', 'Mobile', 'सञ्चार'],
+        'internet': ['Communication', 'Mobile', 'सञ्चार'],
+        'room': ['Guest Room', 'पाहुना कोठा'],
+        'building': ['Community Building', 'सामुदायिक भवन'],
+        'security': ['Security', 'सुरक्षा'],
+        'health': ['Health Post', 'स्वास्थ्य'],
+        'transport': ['Transportation', 'यातायात']
     }
     
     @classmethod
     def enhanced_natural_query_processing(cls, query: str) -> Dict[str, Any]:
-        """Enhanced natural language query processing with comprehensive keyword matching"""
+        """FIXED natural language processing with better keyword matching"""
         import re
-        
         query_lower = query.lower()
         filters = {}
         
-        # Process attractions with fuzzy matching
+        # Process attractions with PARTIAL matching keywords
         matched_attractions = set()
-        for keyword, attractions in cls.ATTRACTION_KEYWORDS.items():
+        for keyword, attraction_terms in cls.ATTRACTION_KEYWORDS.items():
             if keyword in query_lower:
-                matched_attractions.update(attractions)
+                matched_attractions.update(attraction_terms)
         
         if matched_attractions:
+            # Use any_local_attractions for broader matching
             filters['any_local_attractions'] = list(matched_attractions)
-        
-        # Process services
-        matched_services = set()
-        for keyword, services in cls.SERVICE_KEYWORDS.items():
-            if keyword in query_lower:
-                matched_services.update(services)
-        
-        if matched_services:
-            filters['any_tourism_services'] = list(matched_services)
         
         # Process infrastructure
         matched_infrastructure = set()
-        for keyword, infrastructure in cls.INFRASTRUCTURE_KEYWORDS.items():
+        for keyword, infra_terms in cls.INFRASTRUCTURE_KEYWORDS.items():
             if keyword in query_lower:
-                matched_infrastructure.update(infrastructure)
+                matched_infrastructure.update(infra_terms)
         
         if matched_infrastructure:
             filters['any_infrastructure'] = list(matched_infrastructure)
+        
+        # REMOVE conflicting local_attractions filter generation
+        # Don't set local_attractions unless user explicitly wants ALL conditions
         
         # Enhanced pattern matching for ratings
         rating_patterns = [
