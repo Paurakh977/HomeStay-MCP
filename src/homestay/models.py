@@ -152,6 +152,10 @@ class EnhancedFeatureSearchHelper:
         'mobile': ['Communication Facility (Mobile)/सञ्चार सुविधा (मोबाइल)'],
         'wifi': ['Communication Facility (Mobile)/सञ्चार सुविधा (मोबाइल)'],
         'internet': ['Communication Facility (Mobile)/सञ्चार सुविधा (मोबाइल)'],
+        'good toilet': ['Guest Room, Toilet, Bathroom/पाहुना कोठा, शौचालय, स्नानघर'],
+        'clean toilet': ['Guest Room, Toilet, Bathroom/पाहुना कोठा, शौचालय, स्नानघर'],
+        'committee-driven': ['Community Building/सामुदायिक भवन'],
+        'committee driven': ['Community Building/सामुदायिक भवन'],
     }
     
     @classmethod
@@ -242,6 +246,23 @@ class EnhancedFeatureSearchHelper:
             filters['is_verified'] = True
         if 'featured' in query_lower:
             filters['is_featured'] = True
+        if 'committee-driven' in query_lower or 'committee driven' in query_lower:
+            filters['is_committee_driven'] = True
+        
+        # Gender processing
+        if 'female operator' in query_lower or 'female' in query_lower:
+            filters['operator_gender'] = 'female'
+        elif 'male operator' in query_lower or 'male' in query_lower:
+            filters['operator_gender'] = 'male'
+        
+        # Availability status
+        if 'available' in query_lower and 'unavailable' not in query_lower:
+            if 'partially available' in query_lower:
+                filters['availability_status'] = 'partially_available'
+            else:
+                filters['availability_status'] = 'available'
+        elif 'unavailable' in query_lower:
+            filters['availability_status'] = 'unavailable'
         
         return filters
 
@@ -325,6 +346,11 @@ class HomestayFilterRequest(BaseModel):
     # Team member filters
     min_team_members: Optional[int] = None
     max_team_members: Optional[int] = None
+    
+    # Operator and management filters
+    operator_gender: Optional[Literal["male", "female", "other"]] = None
+    is_committee_driven: Optional[bool] = None
+    availability_status: Optional[Literal["available", "unavailable", "partially_available"]] = None
     
     # Custom field filters
     custom_fields: Optional[Dict[str, Any]] = None
