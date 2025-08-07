@@ -250,65 +250,53 @@ async def build_mongodb_filter(filter_request: HomestayFilterRequest) -> Dict[st
 from .models import EnhancedFeatureSearchHelper
 
 async def build_enhanced_mongodb_filter(filter_request: HomestayFilterRequest) -> Dict[str, Any]:
-    """Enhanced MongoDB filter builder with FIXED partial matching"""
-    mongo_filter = {}
-    lang = filter_request.language or "en"
+    """Builds a MongoDB filter with corrected logic for partial matching and logical operators."""
+    mongo_filter = await build_basic_filters(filter_request)
     
-    # Build base filters first (location, status, etc.)
-    base_filter = await build_basic_filters(filter_request)
-    mongo_filter.update(base_filter)
-    
-    # FIXED: Combine all OR conditions properly
-    or_conditions = []
-    
-    # Handle "any_local_attractions" with partial matching
-    if filter_request.any_local_attractions:
-        for attraction in filter_request.any_local_attractions:
-            # Create partial match for each attraction
-            or_conditions.append({
-                "features.localAttractions": {
-                    "$regex": attraction.replace("/", "\\/"),
-                    "$options": "i"
-                }
-            })
-    
-    # Handle "local_attractions" (all must match) - FIXED LOGIC
-    if filter_request.local_attractions:
-        # Convert to partial matches and combine with AND logic
-        and_conditions = []
-        for attraction in filter_request.local_attractions:
-            and_conditions.append({
-                "features.localAttractions": {
-                    "$regex": attraction.replace("/", "\\/"),
-                    "$options": "i"
-                }
-            })
-        if and_conditions:
-            mongo_filter["$and"] = and_conditions
-    
-    # Similarly fix infrastructure and services
-    if filter_request.any_infrastructure:
-        for infra in filter_request.any_infrastructure:
-            or_conditions.append({
-                "features.infrastructure": {
-                    "$regex": infra.replace("/", "\\/"),
-                    "$options": "i"
-                }
-            })
-    
-    if filter_request.any_tourism_services:
-        for service in filter_request.any_tourism_services:
-            or_conditions.append({
-                "features.tourismServices": {
-                    "$regex": service.replace("/", "\\/"),
-                    "$options": "i"
-                }
-            })
-    
-    # Apply OR conditions if any exist
-    if or_conditions:
-        mongo_filter["$or"] = or_conditions
-    
+    # Consolidate all feature-based criteria into a single list
+    all_criteria = []
+
+    def add_criteria(field, values, operator):
+        if not values:
+            return
+        
+        # Create a regex for each value to achieve partial matching
+        regex_conditions = [{"$regex": re.escape(val), "$options": "i"} for val in values]
+        
+        if operator == "$all":
+            # For "AND" logic, all regex patterns must match
+            all_criteria.append({field: {"$all": regex_conditions}})
+        elif operator == "$in":
+            # For "OR" logic, any of the regex patterns can match
+            all_criteria.append({field: {"$in": regex_conditions}})
+
+    # Handle attractions based on the logical operator
+    if filter_request.logical_operator == "OR":
+        add_criteria("features.localAttractions", filter_request.any_local_attractions, "$in")
+    else:
+        add_criteria("features.localAttractions", filter_request.local_attractions, "$all")
+
+    # Handle infrastructure based on the logical operator
+    if filter_request.logical_operator == "OR":
+        add_criteria("features.infrastructure", filter_request.any_infrastructure, "$in")
+    else:
+        add_criteria("features.infrastructure", filter_request.infrastructure, "$all")
+
+    # Handle tourism services based on the logical operator
+    if filter_request.logical_operator == "OR":
+        add_criteria("features.tourismServices", filter_request.any_tourism_services, "$in")
+    else:
+        add_criteria("features.tourismServices", filter_request.tourism_services, "$all")
+
+    # If there are multiple criteria, wrap them in an $and clause
+    if len(all_criteria) > 1:
+        if "$and" in mongo_filter:
+            mongo_filter["$and"].extend(all_criteria)
+        else:
+            mongo_filter["$and"] = all_criteria
+    elif all_criteria:
+        mongo_filter.update(all_criteria)
+        
     return mongo_filter
 
 async def build_basic_filters(filter_request: HomestayFilterRequest) -> Dict[str, Any]:

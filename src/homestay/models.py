@@ -284,6 +284,7 @@ class HomestayFilterRequest(BaseModel):
     limit: Optional[int] = 100
     sort_by: Optional[str] = None
     sort_order: Optional[Literal["asc", "desc"]] = "desc"
+    logical_operator: Optional[Literal["AND", "OR"]] = "AND"
 
 class HomestayFilterResponse(BaseModel):
     """Enhanced response with additional metadata"""

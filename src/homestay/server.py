@@ -41,7 +41,8 @@ async def search_homestays_tool(
     skip: int = 0,
     limit: int = 100,
     sort_order: str = "desc",
-    natural_language_description: str = None
+    natural_language_description: str = None,
+    logical_operator: str = "AND"
 ) -> HomestayFilterResponse:
     """Updated tool with fixed filtering logic"""
     
@@ -52,34 +53,35 @@ async def search_homestays_tool(
             natural_language_description
         )
         print(f"🔍 DEBUGGING - Extracted NL filters: {extracted_filters}")
-    
-    # Build filter request with PRECEDENCE LOGIC
-    # Natural language filters should take precedence for "any_" fields
-    # Explicit parameters should take precedence for exact matches
-    
+
+    # Determine which fields to use based on the logical operator
+    if logical_operator == "OR":
+        attractions_to_use = any_local_attractions or extracted_filters.get('any_local_attractions')
+        infrastructure_to_use = any_infrastructure or extracted_filters.get('any_infrastructure')
+        local_attractions_param = None
+        infrastructure_param = None
+    else: # Default to AND
+        attractions_to_use = None
+        infrastructure_to_use = None
+        local_attractions_param = local_attractions
+        infrastructure_param = infrastructure
+
     filter_request = HomestayFilterRequest(
         province=province,
         district=district,
         status=status or "approved",  # Default to approved
         
-        # For attractions, prioritize natural language extraction
-        any_local_attractions=(
-            any_local_attractions or
-            extracted_filters.get('any_local_attractions')
-        ),
-        local_attractions=local_attractions,  # Only if explicitly set
+        any_local_attractions=attractions_to_use,
+        local_attractions=local_attractions_param,
         
-        # For infrastructure, prioritize natural language
-        any_infrastructure=(
-            any_infrastructure or
-            extracted_filters.get('any_infrastructure')
-        ),
-        infrastructure=infrastructure,  # Only if explicitly set
+        any_infrastructure=infrastructure_to_use,
+        infrastructure=infrastructure_param,
         
         # ... other parameters
         skip=skip,
         limit=limit,
-        sort_order=sort_order
+        sort_order=sort_order,
+        logical_operator=logical_operator
     )
     
     print(f"🔍 DEBUGGING - Final filter request: {filter_request.dict(exclude_none=True)}")
