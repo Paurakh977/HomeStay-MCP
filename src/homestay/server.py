@@ -54,34 +54,29 @@ async def search_homestays_tool(
         )
         print(f"🔍 DEBUGGING - Extracted NL filters: {extracted_filters}")
 
-    # Determine which fields to use based on the logical operator
-    if logical_operator == "OR":
-        attractions_to_use = any_local_attractions or extracted_filters.get('any_local_attractions')
-        infrastructure_to_use = any_infrastructure or extracted_filters.get('any_infrastructure')
-        local_attractions_param = None
-        infrastructure_param = None
-    else: # Default to AND
-        attractions_to_use = None
-        infrastructure_to_use = None
-        local_attractions_param = local_attractions
-        infrastructure_param = infrastructure
+    # Override logical_operator if detected in the natural language query
+    final_logical_operator = extracted_filters.get('logical_operator', logical_operator)
+
+    # Consolidate features from both explicit parameters and natural language processing
+    attractions_to_use = list(set((any_local_attractions or []) + (extracted_filters.get('any_local_attractions') or [])))
+    infrastructure_to_use = list(set((any_infrastructure or []) + (extracted_filters.get('any_infrastructure') or [])))
 
     filter_request = HomestayFilterRequest(
         province=province,
         district=district,
         status=status or "approved",  # Default to approved
         
-        any_local_attractions=attractions_to_use,
-        local_attractions=local_attractions_param,
+        any_local_attractions=attractions_to_use if attractions_to_use else None,
+        local_attractions=local_attractions,
         
-        any_infrastructure=infrastructure_to_use,
-        infrastructure=infrastructure_param,
+        any_infrastructure=infrastructure_to_use if infrastructure_to_use else None,
+        infrastructure=infrastructure,
         
         # ... other parameters
         skip=skip,
         limit=limit,
         sort_order=sort_order,
-        logical_operator=logical_operator
+        logical_operator=final_logical_operator
     )
     
     print(f"🔍 DEBUGGING - Final filter request: {filter_request.dict(exclude_none=True)}")

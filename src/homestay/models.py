@@ -87,10 +87,16 @@ class EnhancedFeatureSearchHelper:
     
     @classmethod
     def enhanced_natural_query_processing(cls, query: str) -> Dict[str, Any]:
-        """FIXED natural language processing with better keyword matching"""
+        """FIXED natural language processing with better keyword matching and logical operator detection"""
         import re
         query_lower = query.lower()
         filters = {}
+
+        # Detect logical operator
+        if ' or ' in query_lower or ' any of ' in query_lower:
+            filters['logical_operator'] = 'OR'
+        else:
+            filters['logical_operator'] = 'AND'
         
         # Process attractions with PARTIAL matching keywords
         matched_attractions = set()
