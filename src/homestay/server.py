@@ -57,11 +57,7 @@ async def search_homestays_tool(
     # Override logical_operator if detected in the natural language query
     final_logical_operator = extracted_filters.get('logical_operator', logical_operator)
 
-    # Consolidate features from both explicit parameters and natural language processing
-    attractions_to_use = list(set((any_local_attractions or []) + (extracted_filters.get('any_local_attractions') or [])))
-    infrastructure_to_use = list(set((any_infrastructure or []) + (extracted_filters.get('any_infrastructure') or [])))
-
-    # 🔧 CRITICAL PARAMETER VALIDATION - Add before filter_request creation
+    # 🔧 CRITICAL PARAMETER VALIDATION - Sanitize inputs FIRST
     print(f"🔍 RAW PARAMETERS - any_local_attractions: {any_local_attractions} (type: {type(any_local_attractions)})")
 
     # Validate and sanitize list parameters to prevent type errors
@@ -86,18 +82,30 @@ async def search_homestays_tool(
             infrastructure = [str(infrastructure)]
         infrastructure = [str(item).strip() for item in infrastructure if item and str(item).strip()]
 
-    print(f"🔍 SANITIZED PARAMETERS - any_local_attractions: {any_local_attractions}")
+    # Consolidate features from both explicit parameters and natural language processing
+    # 🔧 FIX: Only add NL filters if explicit parameters are empty
+    if not any_local_attractions and not local_attractions:
+        attractions_from_nl = extracted_filters.get('any_local_attractions') or []
+        any_local_attractions = attractions_from_nl if attractions_from_nl else None
     
+    if not any_infrastructure and not infrastructure:
+        infrastructure_from_nl = extracted_filters.get('any_infrastructure') or []
+        any_infrastructure = infrastructure_from_nl if infrastructure_from_nl else None
+
+    print(f"🔍 SANITIZED PARAMETERS - any_local_attractions: {any_local_attractions}")
+    print(f"🔍 SANITIZED PARAMETERS - local_attractions: {local_attractions}")
+    print(f"🔍 SANITIZED PARAMETERS - any_infrastructure: {any_infrastructure}")
+    print(f"🔍 SANITIZED PARAMETERS - infrastructure: {infrastructure}")
     
     filter_request = HomestayFilterRequest(
         province=province,
         district=district,
         status=status or "approved",  # Default to approved
         
-        any_local_attractions=attractions_to_use if attractions_to_use else None,
+        any_local_attractions=any_local_attractions,
         local_attractions=local_attractions,
         
-        any_infrastructure=infrastructure_to_use if infrastructure_to_use else None,
+        any_infrastructure=any_infrastructure,
         infrastructure=infrastructure,
         
         # ... other parameters
