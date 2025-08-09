@@ -260,28 +260,51 @@ async def build_enhanced_mongodb_filter(filter_request: HomestayFilterRequest) -
     feature_criteria = []
 
     def add_feature_criteria(field: str, values: List[str]):
-        """✅ FIXED: Properly handle feature criteria with safe regex compilation"""
+        """🔧 FIXED: Handle feature criteria WITHOUT double-escaping for MongoDB"""
         if not values:
             return
         
         try:
-            # Create regex patterns for each value with proper escaping
-            regex_conditions = []
+            # 🔧 KEY FIX: Use string patterns instead of compiled regex objects
+            # MongoDB expects string patterns, not Python regex objects
+            string_patterns = []
             for val in values:
-                if isinstance(val, str) and val.strip():  # Ensure it's a non-empty string
-                    # Escape special regex characters and compile
-                    escaped_val = re.escape(val.strip())
-                    regex_conditions.append(re.compile(escaped_val, re.IGNORECASE))
+                if isinstance(val, str) and val.strip():
+                    # Support bilingual labels like "English/नेपाली" by matching either side
+                    parts = [p.strip() for p in val.strip().split('/') if p.strip()]
+                    if parts:
+                        string_patterns.extend(parts)
+                    else:
+                        string_patterns.append(val.strip())
             
-            if not regex_conditions:  # Skip if no valid patterns
+            # Deduplicate while preserving order
+            seen = set()
+            deduped_patterns = []
+            for p in string_patterns:
+                if p.lower() not in seen:
+                    deduped_patterns.append(p)
+                    seen.add(p.lower())
+            string_patterns = deduped_patterns
+            
+            if not string_patterns:  # Skip if no valid patterns
                 return
-                
+            
             if filter_request.logical_operator == "AND":
-                # For AND, all regex patterns must match in the array
-                feature_criteria.append({field: {"$all": regex_conditions}})
+                # 🔧 CRITICAL FIX: For AND logic, each pattern must match individually
+                # Create separate conditions for each pattern
+                for pattern in string_patterns:
+                    feature_criteria.append({field: {"$regex": pattern, "$options": "i"}})
             else: # OR logic
-                # For OR, any of the regex patterns can match
-                feature_criteria.append({field: {"$in": regex_conditions}})
+                # For OR, any pattern can match - use $or with individual regex conditions
+                if len(string_patterns) == 1:
+                    # Single pattern - simple regex
+                    feature_criteria.append({field: {"$regex": string_patterns[0], "$options": "i"}})
+                else:
+                    # Multiple patterns - use $or
+                    or_conditions = []
+                    for pattern in string_patterns:
+                        or_conditions.append({field: {"$regex": pattern, "$options": "i"}})
+                    feature_criteria.append({"$or": or_conditions})
                 
         except Exception as e:
             print(f"⚠️ Error processing feature criteria for {field}: {e}")
