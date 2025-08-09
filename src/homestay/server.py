@@ -61,6 +61,34 @@ async def search_homestays_tool(
     attractions_to_use = list(set((any_local_attractions or []) + (extracted_filters.get('any_local_attractions') or [])))
     infrastructure_to_use = list(set((any_infrastructure or []) + (extracted_filters.get('any_infrastructure') or [])))
 
+    # 🔧 CRITICAL PARAMETER VALIDATION - Add before filter_request creation
+    print(f"🔍 RAW PARAMETERS - any_local_attractions: {any_local_attractions} (type: {type(any_local_attractions)})")
+
+    # Validate and sanitize list parameters to prevent type errors
+    if any_local_attractions:
+        if not isinstance(any_local_attractions, list):
+            any_local_attractions = [str(any_local_attractions)]
+        # Remove empty strings and ensure all are strings
+        any_local_attractions = [str(item).strip() for item in any_local_attractions if item and str(item).strip()]
+
+    if local_attractions:
+        if not isinstance(local_attractions, list):
+            local_attractions = [str(local_attractions)]
+        local_attractions = [str(item).strip() for item in local_attractions if item and str(item).strip()]
+
+    if any_infrastructure:
+        if not isinstance(any_infrastructure, list):
+            any_infrastructure = [str(any_infrastructure)]
+        any_infrastructure = [str(item).strip() for item in any_infrastructure if item and str(item).strip()]
+
+    if infrastructure:
+        if not isinstance(infrastructure, list):
+            infrastructure = [str(infrastructure)]
+        infrastructure = [str(item).strip() for item in infrastructure if item and str(item).strip()]
+
+    print(f"🔍 SANITIZED PARAMETERS - any_local_attractions: {any_local_attractions}")
+    
+    
     filter_request = HomestayFilterRequest(
         province=province,
         district=district,

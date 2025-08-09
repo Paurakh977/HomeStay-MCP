@@ -141,14 +141,18 @@ async def build_mongodb_filter(filter_request: HomestayFilterRequest) -> Dict[st
     if filter_request.any_amenities:
         mongo_filter["amenities"] = {"$in": filter_request.any_amenities}
     
-    if filter_request.local_attractions:
-        mongo_filter["features.localAttractions"] = {"$all": filter_request.local_attractions}
+    #  FEATURE FILTERS MOVED TO build_enhanced_mongodb_filter() TO AVOID CONFLICTS
+    # All feature filtering (local_attractions, tourism_services, infrastructure) 
+    # is now handled in build_enhanced_mongodb_filter() with proper regex logic
+
+    # if filter_request.local_attractions:
+    #     mongo_filter["features.localAttractions"] = {"$all": filter_request.local_attractions}
     
-    if filter_request.tourism_services:
-        mongo_filter["features.tourismServices"] = {"$all": filter_request.tourism_services}
+    # if filter_request.tourism_services:
+    #     mongo_filter["features.tourismServices"] = {"$all": filter_request.tourism_services}
     
-    if filter_request.infrastructure:
-        mongo_filter["features.infrastructure"] = {"$all": filter_request.infrastructure}
+    # if filter_request.infrastructure:
+    #     mongo_filter["features.infrastructure"] = {"$all": filter_request.infrastructure}
     
     # Boolean filters
     if filter_request.is_verified is not None:
@@ -255,19 +259,33 @@ async def build_enhanced_mongodb_filter(filter_request: HomestayFilterRequest) -
     
     feature_criteria = []
 
-    def add_feature_criteria(field, values):
+    def add_feature_criteria(field: str, values: List[str]):
+        """✅ FIXED: Properly handle feature criteria with safe regex compilation"""
         if not values:
             return
         
-        # Create a regex for each value to achieve partial, case-insensitive matching
-        regex_conditions = [re.compile(re.escape(val), re.IGNORECASE) for val in values]
-        
-        if filter_request.logical_operator == "AND":
-            # For AND, all regex patterns must match in the array
-            feature_criteria.append({field: {"$all": regex_conditions}})
-        else: # OR logic
-            # For OR, any of the regex patterns can match
-            feature_criteria.append({field: {"$in": regex_conditions}})
+        try:
+            # Create regex patterns for each value with proper escaping
+            regex_conditions = []
+            for val in values:
+                if isinstance(val, str) and val.strip():  # Ensure it's a non-empty string
+                    # Escape special regex characters and compile
+                    escaped_val = re.escape(val.strip())
+                    regex_conditions.append(re.compile(escaped_val, re.IGNORECASE))
+            
+            if not regex_conditions:  # Skip if no valid patterns
+                return
+                
+            if filter_request.logical_operator == "AND":
+                # For AND, all regex patterns must match in the array
+                feature_criteria.append({field: {"$all": regex_conditions}})
+            else: # OR logic
+                # For OR, any of the regex patterns can match
+                feature_criteria.append({field: {"$in": regex_conditions}})
+                
+        except Exception as e:
+            print(f"⚠️ Error processing feature criteria for {field}: {e}")
+            return
 
     # Process all feature fields
     add_feature_criteria("features.localAttractions", filter_request.any_local_attractions or filter_request.local_attractions)
@@ -400,16 +418,22 @@ async def run_diagnostic_queries(filter_request, mongo_filter):
     # Test with broader regex patterns
     if filter_request.any_local_attractions:
         for attraction in filter_request.any_local_attractions:
-            # Correctly create a regex for the first word of the attraction
-            first_word = attraction.split() if attraction.split() else attraction
-            broad_filter = {
-                "features.localAttractions": {
-                    "$regex": re.escape(first_word),
-                    "$options": "i"
-                }
-            }
-            count = await collection.count_documents(broad_filter)
-            print(f"🔍 DIAGNOSTIC - Broad match '{attraction.split()}': {count}")
+            if isinstance(attraction, str) and attraction.strip():
+                # Get the first word properly - FIXED
+                words = attraction.strip().split()
+                first_word = words[0] if words else attraction.strip()
+                
+                try:
+                    broad_filter = {
+                        "features.localAttractions": {
+                            "$regex": re.escape(first_word),  # ✅ Now first_word is guaranteed to be a string
+                            "$options": "i"
+                        }
+                    }
+                    count = await collection.count_documents(broad_filter)
+                    print(f"🔍 DIAGNOSTIC - Broad match '{first_word}': {count}")
+                except Exception as e:
+                    print(f"🔍 DIAGNOSTIC - Error testing '{attraction}': {e}")
 
 async def generate_filter_suggestions(filter_request: HomestayFilterRequest, filtered_count: int) -> List[str]:
     """Generate helpful suggestions for improving filter results"""
@@ -480,7 +504,7 @@ async def get_homestay_stats() -> Dict[str, Any]:
         result = await collection.aggregate(pipeline).to_list(length=1)
         
         if result:
-            stats = result
+            stats = result[0]
             stats.pop("_id", None)  # Remove the _id field
             return stats
         else:
