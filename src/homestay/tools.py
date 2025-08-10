@@ -254,19 +254,18 @@ async def build_mongodb_filter(filter_request: HomestayFilterRequest) -> Dict[st
 from .models import EnhancedFeatureSearchHelper
 
 async def build_enhanced_mongodb_filter(filter_request: HomestayFilterRequest) -> Dict[str, Any]:
-    """Builds a MongoDB filter with corrected logic for partial matching and logical operators."""
+    """🔧 COMPLETELY REWRITTEN: Builds a MongoDB filter with proper support for mixed must-have and optional features."""
     mongo_filter = await build_basic_filters(filter_request)
     
-    feature_criteria = []
+    must_have_criteria = []  # AND logic - all must match
+    optional_criteria = []   # OR logic - any can match
 
-    def add_feature_criteria(field: str, values: List[str]):
-        """🔧 FIXED: Handle feature criteria WITHOUT double-escaping for MongoDB"""
+    def add_must_have_criteria(field: str, values: List[str]):
+        """Handle must-have features (ALL must match - AND logic)"""
         if not values:
             return
         
         try:
-            # 🔧 KEY FIX: Use string patterns instead of compiled regex objects
-            # MongoDB expects string patterns, not Python regex objects
             string_patterns = []
             for val in values:
                 if isinstance(val, str) and val.strip():
@@ -286,47 +285,113 @@ async def build_enhanced_mongodb_filter(filter_request: HomestayFilterRequest) -
                     seen.add(p.lower())
             string_patterns = deduped_patterns
             
-            if not string_patterns:  # Skip if no valid patterns
+            if not string_patterns:
                 return
             
-            if filter_request.logical_operator == "AND":
-                # 🔧 CRITICAL FIX: For AND logic, each pattern must match individually
-                # Create separate conditions for each pattern
-                for pattern in string_patterns:
-                    feature_criteria.append({field: {"$regex": pattern, "$options": "i"}})
-            else: # OR logic
-                # For OR, any pattern can match - use $or with individual regex conditions
-                if len(string_patterns) == 1:
-                    # Single pattern - simple regex
-                    feature_criteria.append({field: {"$regex": string_patterns[0], "$options": "i"}})
-                else:
-                    # Multiple patterns - use $or
-                    or_conditions = []
-                    for pattern in string_patterns:
-                        or_conditions.append({field: {"$regex": pattern, "$options": "i"}})
-                    feature_criteria.append({"$or": or_conditions})
+            # For must-have, each pattern creates a separate condition that ALL must match
+            for pattern in string_patterns:
+                must_have_criteria.append({field: {"$regex": pattern, "$options": "i"}})
                 
         except Exception as e:
-            print(f"⚠️ Error processing feature criteria for {field}: {e}")
+            print(f"⚠️ Error processing must-have criteria for {field}: {e}")
+
+    def add_optional_criteria(field: str, values: List[str]):
+        """Handle optional features (ANY can match - OR logic)"""
+        if not values:
             return
+        
+        try:
+            string_patterns = []
+            for val in values:
+                if isinstance(val, str) and val.strip():
+                    # Support bilingual labels like "English/नेपाली" by matching either side
+                    parts = [p.strip() for p in val.strip().split('/') if p.strip()]
+                    if parts:
+                        string_patterns.extend(parts)
+                    else:
+                        string_patterns.append(val.strip())
+            
+            # Deduplicate while preserving order
+            seen = set()
+            deduped_patterns = []
+            for p in string_patterns:
+                if p.lower() not in seen:
+                    deduped_patterns.append(p)
+                    seen.add(p.lower())
+            string_patterns = deduped_patterns
+            
+            if not string_patterns:
+                return
+            
+            # For optional, create OR conditions where ANY can match
+            if len(string_patterns) == 1:
+                optional_criteria.append({field: {"$regex": string_patterns[0], "$options": "i"}})
+            else:
+                or_conditions = []
+                for pattern in string_patterns:
+                    or_conditions.append({field: {"$regex": pattern, "$options": "i"}})
+                optional_criteria.append({"$or": or_conditions})
+                
+        except Exception as e:
+            print(f"⚠️ Error processing optional criteria for {field}: {e}")
 
-    # Process all feature fields
-    add_feature_criteria("features.localAttractions", filter_request.any_local_attractions or filter_request.local_attractions)
-    add_feature_criteria("features.infrastructure", filter_request.any_infrastructure or filter_request.infrastructure)
-    add_feature_criteria("features.tourismServices", filter_request.any_tourism_services or filter_request.tourism_services)
+    # 🔧 CRITICAL: Process must-have and optional features separately
+    # Must-have features (ALL must match)
+    add_must_have_criteria("features.localAttractions", filter_request.local_attractions)
+    add_must_have_criteria("features.infrastructure", filter_request.infrastructure)
+    add_must_have_criteria("features.tourismServices", filter_request.tourism_services)
+    
+    # Optional features (ANY can match)
+    add_optional_criteria("features.localAttractions", filter_request.any_local_attractions)
+    add_optional_criteria("features.infrastructure", filter_request.any_infrastructure)
+    add_optional_criteria("features.tourismServices", filter_request.any_tourism_services)
 
-    # Combine all feature criteria using the appropriate logical operator
-    if feature_criteria:
-        if filter_request.logical_operator == "AND":
+    # 🔧 ENHANCED LOGIC: Combine must-have and optional criteria properly
+    all_criteria = []
+    
+    # Add must-have criteria (they all must match - AND logic)
+    if must_have_criteria:
+        all_criteria.extend(must_have_criteria)
+    
+    # Add optional criteria (at least one should match if any are specified - OR logic)
+    if optional_criteria:
+        if len(optional_criteria) == 1:
+            all_criteria.append(optional_criteria[0])
+        else:
+            # Multiple optional groups - use $or to combine them so at least one matches
+            all_criteria.append({"$or": optional_criteria})
+
+    # Apply the combined criteria to the filter
+    if all_criteria:
+        if len(all_criteria) == 1:
+            # Single criterion - add directly but be careful about structure
+            criterion = all_criteria[0]
+            if isinstance(criterion, dict):
+                # Check if it's a simple field:value or complex condition
+                if any(key.startswith('$') for key in criterion.keys()):
+                    # Complex condition - add to $and
+                    if "$and" in mongo_filter:
+                        mongo_filter["$and"].append(criterion)
+                    else:
+                        mongo_filter["$and"] = [criterion]
+                else:
+                    # Simple field condition - can merge directly if no conflicts
+                    for key, value in criterion.items():
+                        if key in mongo_filter:
+                            # Conflict - use $and to combine
+                            if "$and" in mongo_filter:
+                                mongo_filter["$and"].append(criterion)
+                            else:
+                                mongo_filter["$and"] = [criterion]
+                            break
+                        else:
+                            mongo_filter[key] = value
+        else:
+            # Multiple criteria - combine with $and
             if "$and" in mongo_filter:
-                mongo_filter["$and"].extend(feature_criteria)
+                mongo_filter["$and"].extend(all_criteria)
             else:
-                mongo_filter["$and"] = feature_criteria
-        else: # OR logic
-            if "$or" in mongo_filter:
-                mongo_filter["$or"].extend(feature_criteria)
-            else:
-                mongo_filter["$or"] = feature_criteria
+                mongo_filter["$and"] = all_criteria
                 
     return mongo_filter
 
@@ -335,16 +400,63 @@ async def build_basic_filters(filter_request: HomestayFilterRequest) -> Dict[str
     filters = {}
     lang = filter_request.language or "en"
     
-    # Location filters
+    # Location filters with proper bilingual support
     if filter_request.province:
-        filters[f"address.province.{lang}"] = {
-            "$regex": filter_request.province, "$options": "i"
-        }
+        if lang in ['en', 'ne']:
+            filters[f"address.province.{lang}"] = {"$regex": filter_request.province, "$options": "i"}
+        else:
+            filters["$or"] = [
+                {"address.province.en": {"$regex": filter_request.province, "$options": "i"}},
+                {"address.province.ne": {"$regex": filter_request.province, "$options": "i"}}
+            ]
     
     if filter_request.district:
-        filters[f"address.district.{lang}"] = {
-            "$regex": filter_request.district, "$options": "i"
-        }
+        if lang in ['en', 'ne']:
+            filters[f"address.district.{lang}"] = {"$regex": filter_request.district, "$options": "i"}
+        else:
+            if "$or" not in filters:
+                filters["$or"] = []
+            filters["$or"].extend([
+                {"address.district.en": {"$regex": filter_request.district, "$options": "i"}},
+                {"address.district.ne": {"$regex": filter_request.district, "$options": "i"}}
+            ])
+    
+    if filter_request.municipality:
+        if lang in ['en', 'ne']:
+            filters[f"address.municipality.{lang}"] = {"$regex": filter_request.municipality, "$options": "i"}
+        else:
+            if "$or" not in filters:
+                filters["$or"] = []
+            filters["$or"].extend([
+                {"address.municipality.en": {"$regex": filter_request.municipality, "$options": "i"}},
+                {"address.municipality.ne": {"$regex": filter_request.municipality, "$options": "i"}}
+            ])
+    
+    if filter_request.ward:
+        if lang in ['en', 'ne']:
+            filters[f"address.ward.{lang}"] = {"$regex": filter_request.ward, "$options": "i"}
+        else:
+            if "$or" not in filters:
+                filters["$or"] = []
+            filters["$or"].extend([
+                {"address.ward.en": {"$regex": filter_request.ward, "$options": "i"}},
+                {"address.ward.ne": {"$regex": filter_request.ward, "$options": "i"}}
+            ])
+
+    if filter_request.city:
+        filters["address.city"] = {"$regex": filter_request.city, "$options": "i"}
+
+    if filter_request.village_name:
+        filters["villageName"] = {"$regex": filter_request.village_name, "$options": "i"}
+
+    if filter_request.homestay_name:
+        filters["homeStayName"] = {"$regex": filter_request.homestay_name, "$options": "i"}
+
+    if filter_request.homestay_type:
+        filters["homeStayType"] = filter_request.homestay_type
+
+    if filter_request.admin_username:
+        filters["adminUsername"] = filter_request.admin_username
     
     # Default to approved status
     if filter_request.status:
@@ -355,6 +467,22 @@ async def build_basic_filters(filter_request: HomestayFilterRequest) -> Dict[str
     # Add other basic filters (ratings, capacity, etc.)
     if filter_request.min_average_rating:
         filters["averageRating"] = {"$gte": filter_request.min_average_rating}
+    
+    if filter_request.max_average_rating:
+        if "averageRating" in filters:
+            filters["averageRating"]["$lte"] = filter_request.max_average_rating
+        else:
+            filters["averageRating"] = {"$lte": filter_request.max_average_rating}
+
+    # Boolean filters
+    if filter_request.is_verified is not None:
+        filters["isVerified"] = filter_request.is_verified
+    
+    if filter_request.is_featured is not None:
+        filters["isFeatured"] = filter_request.is_featured
+    
+    if filter_request.is_admin is not None:
+        filters["isAdmin"] = filter_request.is_admin
     
     return filters
 

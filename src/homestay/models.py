@@ -2,6 +2,7 @@ from pydantic import BaseModel, Field, validator
 from typing import Dict, List, Optional, Any, Union, Literal
 from datetime import datetime
 from enum import Enum
+import re
 
 class BilingualData(BaseModel):
     en: str
@@ -58,88 +59,205 @@ class EnhancedFeatureSearchHelper:
     # Use exact database values for better matching
         'hiking': ['Trekking, Climbing & Hiking Routes/ट्रेकिङ, आरोहण तथा हाइकिङ मार्गहरू'],
         'trekking': ['Trekking, Climbing & Hiking Routes/ट्रेकिङ, आरोहण तथा हाइकिङ मार्गहरू'],
+        'trek': ['Trekking, Climbing & Hiking Routes/ट्रेकिङ, आरोहण तथा हाइकिङ मार्गहरू'],
+        'treking': ['Trekking, Climbing & Hiking Routes/ट्रेकिङ, आरोहण तथा हाइकिङ मार्गहरू'],
         'climbing': ['Trekking, Climbing & Hiking Routes/ट्रेकिङ, आरोहण तथा हाइकिङ मार्गहरू'],
         'fishing': ['Fishing in the fish pond/माछा पोखरीमा फिसिङ'],
+        'fshing': ['Fishing in the fish pond/माछा पोखरीमा फिसिङ'],
+        'fish pond': ['Fishing in the fish pond/माछा पोखरीमा फिसिङ'],
         'museum': ['Museums & Cultural Centers/आदिवासी संग्रहालय तथा संस्कृति केन्द्रहरू'],
         'cultural centers': ['Museums & Cultural Centers/आदिवासी संग्रहालय तथा संस्कृति केन्द्रहरू'],
+        'cultural center': ['Museums & Cultural Centers/आदिवासी संग्रहालय तथा संस्कृति केन्द्रहरू'],
         'local dishes': ['Traditional Dishes & Recipes/परम्परागत परिकारहरू'],
+        'local diseshad': ['Traditional Dishes & Recipes/परम्परागत परिकारहरू'],
         'traditional dishes': ['Traditional Dishes & Recipes/परम्परागत परिकारहरू'],
         'organic food': ['Organic Food/Organic खाना'],
         'organic': ['Organic Food/Organic खाना'],
         'national park': ['National Parks & Conservation Areas/राष्ट्रिय निकुञ्ज तथा संरक्षित क्षेत्र'],
+        'natinal park': ['National Parks & Conservation Areas/राष्ट्रिय निकुञ्ज तथा संरक्षित क्षेत्र'],
         'conservation': ['National Parks & Conservation Areas/राष्ट्रिय निकुञ्ज तथा संरक्षित क्षेत्र'],
         'river': ['Major Rivers & Lakes/प्रमुख नदी तथा तालहरू'],
         'lake': ['Major Rivers & Lakes/प्रमुख नदी तथा तालहरू'],
         'viewpoint': ['Viewpoint Tower/दृश्यावलोकन स्थल (भ्यू टावर)'],
         'view tower': ['Viewpoint Tower/दृश्यावलोकन स्थल (भ्यू टावर)'],
         'bird watching': ['Birdwatching Hotspots/चराचुरुङ्गी हेर्ने स्थानहरू'],
+        'bird wathign spot': ['Birdwatching Hotspots/चराचुरुङ्गी हेर्ने स्थानहरू'],
+        'bird watching spot': ['Birdwatching Hotspots/चराचुरुङ्गी हेर्ने स्थानहरू'],
         'birdwatching': ['Birdwatching Hotspots/चराचुरुङ्गी हेर्ने स्थानहरू'],
         'wildlife': ['Iconic & Endangered Wildlife/प्रमुख तथा लोपोन्मुख जनावरहरू'],
+        'endangered': ['Other endangered wildlife and birds/अन्य लोपोन्मुख वन्यजन्तु तथा चराचुरुङ्गी'],
+        'boating': ['Adventure Sports like: Boating, Hiking, Jungle Walk, Elephant Safari, Jeep Safari/साहसिक खेलहरू (जस्तै: बोटिङ, हाइकिङ, जंगल वाक, हात्ती सफारी, जीप सफारी)'],
         'safari': ['Adventure Sports like: Boating, Hiking, Jungle Walk, Elephant Safari, Jeep Safari/साहसिक खेलहरू (जस्तै: बोटिङ, हाइकिङ, जंगल वाक, हात्ती सफारी, जीप सफारी)'],
         'jungle walk': ['Adventure Sports like: Boating, Hiking, Jungle Walk, Elephant Safari, Jeep Safari/साहसिक खेलहरू (जस्तै: बोटिङ, हाइकिङ, जंगल वाक, हात्ती सफारी, जीप सफारी)'],
         'adventure sports': ['Adventure Sports like: Boating, Hiking, Jungle Walk, Elephant Safari, Jeep Safari/साहसिक खेलहरू (जस्तै: बोटिङ, हाइकिङ, जंगल वाक, हात्ती सफारी, जीप सफारी)'],
     }
 
     INFRASTRUCTURE_KEYWORDS = {
-        'water': ['Drinking Water/खानेपानी'],
-        'drinking water': ['Drinking Water/खानेपानी'],
-        'clean water': ['Drinking Water/खानेपानी'],
-        'clean drinking water': ['Drinking Water/खानेपानी'],
-        'toilet': ['Toilet/शौचालय'],
-        'bathroom': ['Toilet/शौचालय'],
-        'washroom': ['Toilet/शौचालय'],
-        'solar': ['Solar Panel & lighting system/सोलार प्यानल तथा बत्ती व्यवस्था'],
-        'solar panel': ['Solar Panel & lighting system/सोलार प्यानल तथा बत्ती व्यवस्था'],
-        'lighting': ['Solar Panel & lighting system/सोलार प्यानल तथा बत्ती व्यवस्था'],
-        'communication': ['Communication & Mobile networks/सञ्चार तथा मोबाइल सञ्जाल'],
-        'mobile': ['Communication & Mobile networks/सञ्चार तथा मोबाइल सञ्जाल'],
-        'wifi': ['Communication & Mobile networks/सञ्चार तथा मोबाइल सञ्जाल'],
-        'internet': ['Communication & Mobile networks/सञ्चार तथा मोबाइल सञ्जाल'],
-        'guest room': ['Guest Room/पाहुना कोठा'],
-        'room': ['Guest Room/पाहुना कोठा'],
+        'water': ['Drinking Water and Solar Lighting/खानेपानी तथा सोलार बत्ती'],
+        'drinking water': ['Drinking Water and Solar Lighting/खानेपानी तथा सोलार बत्ती'],
+        'clean water': ['Drinking Water and Solar Lighting/खानेपानी तथा सोलार बत्ती'],
+        'clean drinking water': ['Drinking Water and Solar Lighting/खानेपानी तथा सोलार बत्ती'],
+        'toilet': ['Guest Room, Toilet, Bathroom/पाहुना कोठा, शौचालय, स्नानघर'],
+        'bathroom': ['Guest Room, Toilet, Bathroom/पाहुना कोठा, शौचालय, स्नानघर'],
+        'washroom': ['Guest Room, Toilet, Bathroom/पाहुना कोठा, शौचालय, स्नानघर'],
+        'solar': ['Drinking Water and Solar Lighting/खानेपानी तथा सोलार बत्ती'],
+        'solar lighting': ['Drinking Water and Solar Lighting/खानेपानी तथा सोलार बत्ती'],
+        'lighting': ['Drinking Water and Solar Lighting/खानेपानी तथा सोलार बत्ती'],
+        'communication': ['Communication Facility (Mobile)/सञ्चार सुविधा (मोबाइल)'],
+        'mobile': ['Communication Facility (Mobile)/सञ्चार सुविधा (मोबाइल)'],
+        'wifi': ['Communication Facility (Mobile)/सञ्चार सुविधा (मोबाइल)'],
+        'internet': ['Communication Facility (Mobile)/सञ्चार सुविधा (मोबाइल)'],
+        'guest room': ['Guest Room, Toilet, Bathroom/पाहुना कोठा, शौचालय, स्नानघर'],
+        'room': ['Guest Room, Toilet, Bathroom/पाहुना कोठा, शौचालय, स्नानघर'],
         'community building': ['Community Building/सामुदायिक भवन'],
-        'security': ['Security/सुरक्षा'],
-        'health': ['Health Post/स्वास्थ्य चौकी'],
-        'health post': ['Health Post/स्वास्थ्य चौकी'],
-        'transport': ['Transportation/यातायात'],
-        'transportation': ['Transportation/यातायात'],
+        'security': ['Security Post (Nepaltar)/सुरक्षा चौकी (नेपालटार)'],
+        'health': ['Health Post (Udayapurgadhi)/स्वास्थ्य चौकी (उदयपुरगढी)'],
+        'health post': ['Health Post (Udayapurgadhi)/स्वास्थ्य चौकी (उदयपुरगढी)'],
+        'transport': ['Transportation Facility/यातायात सुविधा'],
+        'transportation': ['Transportation Facility/यातायात सुविधा'],
+    }
+
+    TOURISM_KEYWORDS = {
+        # Match exact frontend strings from HomestayFeaturesForm.tsx
+        'welcome': ['Welcome and Farewell/स्वागत तथा विदाई'],
+        'farewell': ['Welcome and Farewell/स्वागत तथा विदाई'],
+        'accommodation': ['Comfortable Accommodation/आरामदायी आवास'],
+        'comfortable accommodation': ['Comfortable Accommodation/आरामदायी आवास'],
+        'gift': ['Gift or Souvenir/मायाको चिनो (उपहार)'],
+        'souvenir': ['Gift or Souvenir/मायाको चिनो (उपहार)'],
+        'cultural program': ['Traditional Cultural Program/परम्परागत सांस्कृतिक कार्यक्रम'],
+        'traditional program': ['Traditional Cultural Program/परम्परागत सांस्कृतिक कार्यक्रम'],
+        # FIXED: Use exact frontend string for local dishes
+        'local dishes': ['Local Dishes/स्थानीय परिकारहरू'],
+        'local dish': ['Local Dishes/स्थानीय परिकारहरू'],
+        'local diseshad': ['Local Dishes/स्थानीय परिकारहरू'],  # Common misspelling
+        'local food': ['Local Dishes/स्थानीय परिकारहरू'],
+        'traditional dishes': ['Local Dishes/स्थानीय परिकारहरू'],  # Map to same value
     }
     
     @classmethod
     def enhanced_natural_query_processing(cls, query: str) -> Dict[str, Any]:
-        """FIXED natural language processing with better keyword matching and logical operator detection"""
+        """🔧 ENHANCED natural language processing to accurately handle must-have vs optional features"""
         import re
-        query_lower = query.lower()
+        query_lower = query.lower().strip()
         filters = {}
 
-        # Detect logical operator
-        if ' or ' in query_lower or ' any of ' in query_lower:
-            filters['logical_operator'] = 'OR'
+        # Initialize feature sets
+        must_attractions = set()
+        must_infrastructure = set()
+        must_tourism_services = set()
+        optional_attractions = set()
+        optional_infrastructure = set()
+        optional_tourism_services = set()
+
+        # 🔧 STEP 1: Handle parentheses-based structured queries like "with (A, B, C) and if possible (X, Y)"
+        parentheses_pattern = r'\(([^)]+)\).*?(?:and if possible|optionally|if available).*?\(([^)]+)\)'
+        paren_match = re.search(parentheses_pattern, query_lower)
+        
+        if paren_match:
+            must_text = paren_match.group(1)
+            optional_text = paren_match.group(2)
+            
+            # Process must-have features from first parentheses
+            cls._extract_features_from_text(must_text, must_attractions, must_infrastructure, must_tourism_services)
+            # Process optional features from second parentheses
+            cls._extract_features_from_text(optional_text, optional_attractions, optional_infrastructure, optional_tourism_services)
+        
         else:
-            filters['logical_operator'] = 'AND'
+            # 🔧 STEP 2: Handle comma-separated lists with optional indicators
+            # Pattern: "need A, B, C and if possible X, Y" or "with A, B and optionally X"
+            optional_split = re.split(r'\b(?:and if possible|optionally|if available|would be nice|prefer|bonus)\b', query_lower, 1)
+            
+            if len(optional_split) > 1:
+                must_text = optional_split[0].strip()
+                optional_text = optional_split[1].strip()
+                
+                # Clean up common prefixes from must_text
+                must_text = re.sub(r'^(?:i need|need|want|looking for|homestay with|homestay having|with|having)\s*', '', must_text)
+                
+                # Process must-have features (before "and if possible")
+                cls._extract_features_from_text(must_text, must_attractions, must_infrastructure, must_tourism_services)
+                # Process optional features (after "and if possible")
+                cls._extract_features_from_text(optional_text, optional_attractions, optional_infrastructure, optional_tourism_services)
+            
+            else:
+                # 🔧 STEP 3: No explicit optional indicators - analyze context
+                full_text = query_lower
+                
+                # Check for OR patterns that indicate all features are optional
+                if any(pattern in full_text for pattern in [' or ', ' any of ', ' either ', ' one of ']):
+                    # Treat all as optional (OR logic)
+                    cls._extract_features_from_text(full_text, optional_attractions, optional_infrastructure, optional_tourism_services)
+                    filters['logical_operator'] = 'OR'
+                else:
+                    # Default: treat all as must-have (AND logic)
+                    cls._extract_features_from_text(full_text, must_attractions, must_infrastructure, must_tourism_services)
+                    filters['logical_operator'] = 'AND'
+
+        # 🔧 SET FILTER PARAMETERS
+        if must_attractions:
+            filters['local_attractions'] = list(must_attractions)
+        if optional_attractions:
+            filters['any_local_attractions'] = list(optional_attractions)
+        if must_infrastructure:
+            filters['infrastructure'] = list(must_infrastructure)
+        if optional_infrastructure:
+            filters['any_infrastructure'] = list(optional_infrastructure)
+        if must_tourism_services:
+            filters['tourism_services'] = list(must_tourism_services)
+        if optional_tourism_services:
+            filters['any_tourism_services'] = list(optional_tourism_services)
+
+        # Set logical operator based on detected feature types
+        if must_attractions or must_infrastructure or must_tourism_services:
+            if optional_attractions or optional_infrastructure or optional_tourism_services:
+                filters['logical_operator'] = 'MIXED'  # Both must-have AND optional features
+            else:
+                filters['logical_operator'] = 'AND'  # Only must-have features
+        elif optional_attractions or optional_infrastructure or optional_tourism_services:
+            filters['logical_operator'] = 'OR'  # Only optional features
+        else:
+            filters['logical_operator'] = 'AND'  # Default
+
+        # 🔧 LOCATION EXTRACTION - Extract province, district, municipality from query
+        # Common location patterns
+        location_patterns = {
+            'province': [
+                r'(?:in|from|under)\s+([A-Za-z\s]+?)\s+province',
+                r'([A-Za-z\s]+?)\s+pradesh',
+                r'([A-Za-z\s]+?)\s+प्रदेश',
+            ],
+            'district': [
+                r'(?:in|from|under)\s+([A-Za-z\s]+?)\s+district',
+                r'([A-Za-z\s]+?)\s+जिल्ला',
+            ],
+            'municipality': [
+                r'(?:in|from|under)\s+([A-Za-z\s]+?)\s+municipality',
+                r'([A-Za-z\s]+?)\s+नगरपालिका',
+                r'([A-Za-z\s]+?)\s+गाउँपालिका',
+            ],
+            'city': [
+                r'(?:in|from|near)\s+([A-Za-z\s]+?)\s+city',
+                r'([A-Za-z\s]+?)\s+शहर',
+            ],
+            'village': [
+                r'(?:in|from|near)\s+([A-Za-z\s]+?)\s+village',
+                r'([A-Za-z\s]+?)\s+गाउँ',
+            ]
+        }
         
-        # Process attractions with PARTIAL matching keywords
-        matched_attractions = set()
-        for keyword, attraction_terms in cls.ATTRACTION_KEYWORDS.items():
-            if keyword in query_lower:
-                matched_attractions.update(attraction_terms)
-        
-        if matched_attractions:
-            # Use any_local_attractions for broader matching
-            filters['any_local_attractions'] = list(matched_attractions)
-        
-        # Process infrastructure
-        matched_infrastructure = set()
-        for keyword, infra_terms in cls.INFRASTRUCTURE_KEYWORDS.items():
-            if keyword in query_lower:
-                matched_infrastructure.update(infra_terms)
-        
-        if matched_infrastructure:
-            filters['any_infrastructure'] = list(matched_infrastructure)
-        
-        # REMOVE conflicting local_attractions filter generation
-        # Don't set local_attractions unless user explicitly wants ALL conditions
-        
+        for location_type, patterns in location_patterns.items():
+            for pattern in patterns:
+                match = re.search(pattern, query_lower, re.IGNORECASE)
+                if match:
+                    location_value = match.group(1).strip()
+                    if location_value and len(location_value) > 1:
+                        if location_type == 'village':
+                            filters['village_name'] = location_value
+                        else:
+                            filters[location_type] = location_value
+                        break
+
         # Enhanced pattern matching for ratings
         rating_patterns = [
             r'rating (?:over|above|more than|greater than) (\d+(?:\.\d+)?)',
@@ -153,65 +271,55 @@ class EnhancedFeatureSearchHelper:
             if match:
                 filters['min_average_rating'] = float(match.group(1))
                 break
-        
-        # Enhanced team member processing
-        team_patterns = [
-            r'team member(?:s)? (?:over|more than|greater than) (\d+)',
-            r'(\d+)\+ team member',
-            r'minimum (\d+) team member',
-            r'at least (\d+) team member',
-        ]
-        
-        for pattern in team_patterns:
-            match = re.search(pattern, query_lower)
-            if match:
-                filters['min_team_members'] = int(match.group(1))
-                break
-        
-        # Feature access processing
-        feature_access = {}
-        if 'dashboard' in query_lower:
-            feature_access['dashboard'] = True
-        if 'profile' in query_lower:
-            feature_access['profile'] = True
-        if 'portal' in query_lower:
-            feature_access['portal'] = True
-        if 'documents' in query_lower:
-            feature_access['documents'] = True
-        if 'image upload' in query_lower or 'upload' in query_lower:
-            feature_access['image_upload'] = True
-        if 'settings' in query_lower:
-            feature_access['settings'] = True
-        if 'chat' in query_lower:
-            feature_access['chat'] = True
-        
-        if feature_access:
-            filters['feature_access'] = feature_access
-        
-        # Boolean flags
-        if 'verified' in query_lower:
-            filters['is_verified'] = True
-        if 'featured' in query_lower:
-            filters['is_featured'] = True
-        if 'committee-driven' in query_lower or 'committee driven' in query_lower:
-            filters['is_committee_driven'] = True
-        
-        # Gender processing
-        if 'female operator' in query_lower or 'female' in query_lower:
-            filters['operator_gender'] = 'female'
-        elif 'male operator' in query_lower or 'male' in query_lower:
-            filters['operator_gender'] = 'male'
-        
-        # Availability status
-        if 'available' in query_lower and 'unavailable' not in query_lower:
-            if 'partially available' in query_lower:
-                filters['availability_status'] = 'partially_available'
-            else:
-                filters['availability_status'] = 'available'
-        elif 'unavailable' in query_lower:
-            filters['availability_status'] = 'unavailable'
-        
+
         return filters
+    
+    @classmethod
+    def _extract_features_from_text(cls, text: str, attractions_set: set, infrastructure_set: set, tourism_set: set):
+        """Helper method to extract features from text and add them to appropriate sets"""
+        if not text or not text.strip():
+            return
+            
+        # Clean the text and split by common separators
+        text = text.strip()
+        # Split by commas, 'and', 'with', but be careful not to split bilingual terms
+        parts = re.split(r'(?:,\s*|\s+and\s+|\s+with\s+)(?![^/]*\s)', text)
+        
+        # Also check the full text for compound terms
+        all_text_parts = [text] + [part.strip() for part in parts if part.strip()]
+        
+        for part in all_text_parts:
+            part = part.strip()
+            if not part:
+                continue
+            for keyword, attraction_terms in cls.ATTRACTION_KEYWORDS.items():
+                if keyword in part:
+                    attractions_set.update(attraction_terms)
+            for keyword, infra_terms in cls.INFRASTRUCTURE_KEYWORDS.items():
+                if keyword in part:
+                    infrastructure_set.update(infra_terms)
+            for keyword, tourism_terms in cls.TOURISM_KEYWORDS.items():
+                if keyword in part:
+                    tourism_set.update(tourism_terms)
+
+    @classmethod
+    def fuzzy_keyword_match(cls, query: str, keywords: Dict[str, List[str]]) -> List[str]:
+        """Fuzzy matching for keywords (e.g., 'hike' matches 'hiking')"""
+        import difflib
+        
+        query_words = query.lower().split()
+        matched_features = set()
+        
+        for word in query_words:
+            for keyword, features in keywords.items():
+                # Exact match
+                if word in keyword or keyword in word:
+                    matched_features.update(features)
+                # Fuzzy match
+                elif difflib.SequenceMatcher(None, word, keyword).ratio() > 0.8:
+                    matched_features.update(features)
+        
+        return list(matched_features)
 
 class HomestayFilterRequest(BaseModel):
     """Comprehensive homestay filtering request model"""
@@ -310,7 +418,7 @@ class HomestayFilterRequest(BaseModel):
     limit: Optional[int] = 100
     sort_by: Optional[str] = None
     sort_order: Optional[Literal["asc", "desc"]] = "desc"
-    logical_operator: Optional[Literal["AND", "OR"]] = "AND"
+    logical_operator: Optional[Literal["AND", "OR", "MIXED"]] = "AND"
 
 class HomestayFilterResponse(BaseModel):
     """Enhanced response with additional metadata"""
@@ -322,23 +430,3 @@ class HomestayFilterResponse(BaseModel):
     
     class Config:
         allow_population_by_field_name = True
-
-# Add to EnhancedFeatureSearchHelper
-@classmethod
-def fuzzy_keyword_match(cls, query: str, keywords: Dict[str, List[str]]) -> List[str]:
-    """Fuzzy matching for keywords (e.g., 'hike' matches 'hiking')"""
-    import difflib
-    
-    query_words = query.lower().split()
-    matched_features = set()
-    
-    for word in query_words:
-        for keyword, features in keywords.items():
-            # Exact match
-            if word in keyword or keyword in word:
-                matched_features.update(features)
-            # Fuzzy match
-            elif difflib.SequenceMatcher(None, word, keyword).ratio() > 0.8:
-                matched_features.update(features)
-    
-    return list(matched_features)

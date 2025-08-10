@@ -30,14 +30,26 @@ mcp = FastMCP(
 
 @mcp.tool(name="search_homestays")
 async def search_homestays_tool(
-    # ... existing parameters ...
+    # Location filters
     province: str = None,
     district: str = None,
+    municipality: str = None,
     status: str = None,
+    
+    # Feature filters - Local Attractions
     any_local_attractions: list = None,
     local_attractions: list = None,
+    
+    # Feature filters - Infrastructure  
     any_infrastructure: list = None,
     infrastructure: list = None,
+    
+    # Feature filters - Tourism Services
+    any_tourism_services: list = None,
+    tourism_services: list = None,
+    
+    # Other filters
+    min_average_rating: float = None,
     skip: int = 0,
     limit: int = 100,
     sort_order: str = "desc",
@@ -61,54 +73,80 @@ async def search_homestays_tool(
     print(f"🔍 RAW PARAMETERS - any_local_attractions: {any_local_attractions} (type: {type(any_local_attractions)})")
 
     # Validate and sanitize list parameters to prevent type errors
-    if any_local_attractions:
-        if not isinstance(any_local_attractions, list):
-            any_local_attractions = [str(any_local_attractions)]
-        # Remove empty strings and ensure all are strings
-        any_local_attractions = [str(item).strip() for item in any_local_attractions if item and str(item).strip()]
+    def sanitize_list(value):
+        if value is None:
+            return None
+        if not isinstance(value, list):
+            value = [value]
+        return [str(item).strip() for item in value if item and str(item).strip()]
 
-    if local_attractions:
-        if not isinstance(local_attractions, list):
-            local_attractions = [str(local_attractions)]
-        local_attractions = [str(item).strip() for item in local_attractions if item and str(item).strip()]
+    any_local_attractions = sanitize_list(any_local_attractions)
+    local_attractions = sanitize_list(local_attractions)
+    any_infrastructure = sanitize_list(any_infrastructure)
+    infrastructure = sanitize_list(infrastructure)
+    any_tourism_services = sanitize_list(any_tourism_services)
+    tourism_services = sanitize_list(tourism_services)
 
-    if any_infrastructure:
-        if not isinstance(any_infrastructure, list):
-            any_infrastructure = [str(any_infrastructure)]
-        any_infrastructure = [str(item).strip() for item in any_infrastructure if item and str(item).strip()]
-
-    if infrastructure:
-        if not isinstance(infrastructure, list):
-            infrastructure = [str(infrastructure)]
-        infrastructure = [str(item).strip() for item in infrastructure if item and str(item).strip()]
-
-    # Consolidate features from both explicit parameters and natural language processing
-    # 🔧 FIX: Only add NL filters if explicit parameters are empty
+    # 🔧 ENHANCED CONSOLIDATION: Handle both must-have and optional features correctly
+    # Only add NL filters if explicit parameters are empty
     if not any_local_attractions and not local_attractions:
-        attractions_from_nl = extracted_filters.get('any_local_attractions') or []
-        any_local_attractions = attractions_from_nl if attractions_from_nl else None
+        must_attractions_from_nl = extracted_filters.get('local_attractions') or []
+        optional_attractions_from_nl = extracted_filters.get('any_local_attractions') or []
+        if must_attractions_from_nl:
+            local_attractions = must_attractions_from_nl
+        elif optional_attractions_from_nl:
+            any_local_attractions = optional_attractions_from_nl
     
     if not any_infrastructure and not infrastructure:
-        infrastructure_from_nl = extracted_filters.get('any_infrastructure') or []
-        any_infrastructure = infrastructure_from_nl if infrastructure_from_nl else None
+        must_infrastructure_from_nl = extracted_filters.get('infrastructure') or []
+        optional_infrastructure_from_nl = extracted_filters.get('any_infrastructure') or []
+        if must_infrastructure_from_nl:
+            infrastructure = must_infrastructure_from_nl
+        elif optional_infrastructure_from_nl:
+            any_infrastructure = optional_infrastructure_from_nl
+
+    # Tourism services via NL
+    if not any_tourism_services and not tourism_services:
+        must_services_from_nl = extracted_filters.get('tourism_services') or []
+        optional_services_from_nl = extracted_filters.get('any_tourism_services') or []
+        if must_services_from_nl:
+            tourism_services = must_services_from_nl
+        elif optional_services_from_nl:
+            any_tourism_services = optional_services_from_nl
+
+    # Location and rating via NL, if supported
+    if not province:
+        province = extracted_filters.get('province')
+    if not district:
+        district = extracted_filters.get('district')
+    if not municipality:
+        municipality = extracted_filters.get('municipality')
+    if not min_average_rating and extracted_filters.get('min_average_rating'):
+        min_average_rating = extracted_filters.get('min_average_rating')
 
     print(f"🔍 SANITIZED PARAMETERS - any_local_attractions: {any_local_attractions}")
     print(f"🔍 SANITIZED PARAMETERS - local_attractions: {local_attractions}")
     print(f"🔍 SANITIZED PARAMETERS - any_infrastructure: {any_infrastructure}")
     print(f"🔍 SANITIZED PARAMETERS - infrastructure: {infrastructure}")
+    print(f"🔍 SANITIZED PARAMETERS - any_tourism_services: {any_tourism_services}")
+    print(f"🔍 SANITIZED PARAMETERS - tourism_services: {tourism_services}")
     
     filter_request = HomestayFilterRequest(
         province=province,
         district=district,
+        municipality=municipality,
         status=status or "approved",  # Default to approved
-        
+
+        # Features
         any_local_attractions=any_local_attractions,
         local_attractions=local_attractions,
-        
         any_infrastructure=any_infrastructure,
         infrastructure=infrastructure,
-        
-        # ... other parameters
+        any_tourism_services=any_tourism_services,
+        tourism_services=tourism_services,
+
+        # Other filters
+        min_average_rating=min_average_rating,
         skip=skip,
         limit=limit,
         sort_order=sort_order,
