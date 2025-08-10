@@ -250,9 +250,6 @@ async def build_mongodb_filter(filter_request: HomestayFilterRequest) -> Dict[st
     
     return mongo_filter
 
-# Add this import at the top
-from .models import EnhancedFeatureSearchHelper
-
 async def build_enhanced_mongodb_filter(filter_request: HomestayFilterRequest) -> Dict[str, Any]:
     """🔧 COMPLETELY REWRITTEN: Builds a MongoDB filter with proper support for mixed must-have and optional features."""
     mongo_filter = await build_basic_filters(filter_request)
@@ -261,76 +258,79 @@ async def build_enhanced_mongodb_filter(filter_request: HomestayFilterRequest) -
     optional_criteria = []   # OR logic - any can match
 
     def add_must_have_criteria(field: str, values: List[str]):
-        """Handle must-have features (ALL must match - AND logic)"""
+        """Handle must-have features (ALL must match - AND logic) with smart bilingual handling"""
         if not values:
             return
         
         try:
-            string_patterns = []
             for val in values:
                 if isinstance(val, str) and val.strip():
-                    # Support bilingual labels like "English/नेपाली" by matching either side
+                    # 🔧 CRITICAL FIX: Handle bilingual labels properly
                     parts = [p.strip() for p in val.strip().split('/') if p.strip()]
-                    if parts:
-                        string_patterns.extend(parts)
+                    if len(parts) > 1:
+                        # Bilingual term - create OR condition for EITHER language to match
+                        # This is the KEY FIX: For must-have features, each term needs OR for its parts
+                        bilingual_or = []
+                        for part in parts:
+                            # Try both exact and partial matching for better coverage
+                            bilingual_or.append({field: {"$regex": part, "$options": "i"}})
+                            # For complex phrases, also try key words
+                            words = part.split()
+                            if len(words) > 2:
+                                for word in words:
+                                    if len(word.strip()) > 3:
+                                        bilingual_or.append({field: {"$regex": word.strip(), "$options": "i"}})
+                        # Each bilingual term gets its own OR clause, but terms are ANDed together
+                        must_have_criteria.append({"$or": bilingual_or})
                     else:
-                        string_patterns.append(val.strip())
-            
-            # Deduplicate while preserving order
-            seen = set()
-            deduped_patterns = []
-            for p in string_patterns:
-                if p.lower() not in seen:
-                    deduped_patterns.append(p)
-                    seen.add(p.lower())
-            string_patterns = deduped_patterns
-            
-            if not string_patterns:
-                return
-            
-            # For must-have, each pattern creates a separate condition that ALL must match
-            for pattern in string_patterns:
-                must_have_criteria.append({field: {"$regex": pattern, "$options": "i"}})
+                        # Single term - try both exact and partial matching
+                        words = val.split()
+                        if len(words) > 2:
+                            # For phrases, create OR with full phrase + key words
+                            phrase_or = [
+                                {field: {"$regex": val.strip(), "$options": "i"}}
+                            ]
+                            for word in words:
+                                if len(word.strip()) > 3:
+                                    phrase_or.append({field: {"$regex": word.strip(), "$options": "i"}})
+                            must_have_criteria.append({"$or": phrase_or})
+                        else:
+                            must_have_criteria.append({field: {"$regex": val.strip(), "$options": "i"}})
                 
         except Exception as e:
             print(f"⚠️ Error processing must-have criteria for {field}: {e}")
 
     def add_optional_criteria(field: str, values: List[str]):
-        """Handle optional features (ANY can match - OR logic)"""
+        """Handle optional features (ANY can match - OR logic) with smart bilingual handling"""
         if not values:
             return
         
         try:
-            string_patterns = []
+            all_patterns = []
             for val in values:
                 if isinstance(val, str) and val.strip():
-                    # Support bilingual labels like "English/नेपाली" by matching either side
+                    # Handle bilingual labels
                     parts = [p.strip() for p in val.strip().split('/') if p.strip()]
-                    if parts:
-                        string_patterns.extend(parts)
-                    else:
-                        string_patterns.append(val.strip())
+                    all_patterns.extend(parts)
             
-            # Deduplicate while preserving order
+            # Remove duplicates while preserving order
             seen = set()
-            deduped_patterns = []
-            for p in string_patterns:
+            unique_patterns = []
+            for p in all_patterns:
                 if p.lower() not in seen:
-                    deduped_patterns.append(p)
+                    unique_patterns.append(p)
                     seen.add(p.lower())
-            string_patterns = deduped_patterns
             
-            if not string_patterns:
-                return
-            
-            # For optional, create OR conditions where ANY can match
-            if len(string_patterns) == 1:
-                optional_criteria.append({field: {"$regex": string_patterns[0], "$options": "i"}})
-            else:
+            if unique_patterns:
+                # Create OR conditions for all patterns
                 or_conditions = []
-                for pattern in string_patterns:
+                for pattern in unique_patterns:
                     or_conditions.append({field: {"$regex": pattern, "$options": "i"}})
-                optional_criteria.append({"$or": or_conditions})
+                
+                if len(or_conditions) == 1:
+                    optional_criteria.append(or_conditions[0])
+                else:
+                    optional_criteria.append({"$or": or_conditions})
                 
         except Exception as e:
             print(f"⚠️ Error processing optional criteria for {field}: {e}")
@@ -346,20 +346,124 @@ async def build_enhanced_mongodb_filter(filter_request: HomestayFilterRequest) -
     add_optional_criteria("features.infrastructure", filter_request.any_infrastructure)
     add_optional_criteria("features.tourismServices", filter_request.any_tourism_services)
 
-    # 🔧 ENHANCED LOGIC: Combine must-have and optional criteria properly
+    # 🔧 SMART LOGIC: Handle different logical operators intelligently
+    logical_operator = filter_request.logical_operator or "AND"
+    
+    # Check if we have mixed feature types (attractions + infrastructure/tourism)
+    has_attractions = bool(filter_request.local_attractions or filter_request.any_local_attractions)
+    has_infrastructure = bool(filter_request.infrastructure or filter_request.any_infrastructure)
+    has_tourism = bool(filter_request.tourism_services or filter_request.any_tourism_services)
+    
+    feature_type_count = sum([has_attractions, has_infrastructure, has_tourism])
+    is_mixed_types = feature_type_count > 1
+    
+    # 🔧 ENHANCED LOGIC: Combine criteria based on logical operator
     all_criteria = []
     
-    # Add must-have criteria (they all must match - AND logic)
-    if must_have_criteria:
-        all_criteria.extend(must_have_criteria)
+    if logical_operator == "MIXED":
+        # MIXED operator: Combine intelligently for mixed feature scenarios
+        if must_have_criteria and optional_criteria:
+            # Strategy: (must-have1 AND must-have2) OR (optional1 OR optional2)
+            must_combined = {"$and": must_have_criteria} if len(must_have_criteria) > 1 else must_have_criteria[0]
+            optional_combined = {"$or": optional_criteria} if len(optional_criteria) > 1 else optional_criteria[0]
+            all_criteria.append({"$or": [must_combined, optional_combined]})
+        elif must_have_criteria:
+            # Only must-have features with MIXED operator - be more permissive
+            if is_mixed_types:
+                # For mixed types, use OR between categories
+                category_groups = {"attractions": [], "infrastructure": [], "tourism": []}
+                
+                for criterion in must_have_criteria:
+                    # Determine which category this criterion belongs to
+                    if "features.localAttractions" in str(criterion):
+                        category_groups["attractions"].append(criterion)
+                    elif "features.infrastructure" in str(criterion):
+                        category_groups["infrastructure"].append(criterion)
+                    elif "features.tourismServices" in str(criterion):
+                        category_groups["tourism"].append(criterion)
+                
+                # Combine within categories with AND, between categories with OR
+                category_criteria = []
+                for category, criteria in category_groups.items():
+                    if criteria:
+                        if len(criteria) == 1:
+                            category_criteria.append(criteria[0])
+                        else:
+                            category_criteria.append({"$and": criteria})
+                
+                if len(category_criteria) == 1:
+                    all_criteria.append(category_criteria[0])
+                else:
+                    all_criteria.append({"$or": category_criteria})
+            else:
+                # Same category features - use AND
+                all_criteria.extend(must_have_criteria)
+        elif optional_criteria:
+            # Only optional features - use OR
+            if len(optional_criteria) == 1:
+                all_criteria.append(optional_criteria[0])
+            else:
+                all_criteria.append({"$or": optional_criteria})
     
-    # Add optional criteria (at least one should match if any are specified - OR logic)
-    if optional_criteria:
-        if len(optional_criteria) == 1:
-            all_criteria.append(optional_criteria[0])
-        else:
-            # Multiple optional groups - use $or to combine them so at least one matches
-            all_criteria.append({"$or": optional_criteria})
+    elif logical_operator == "OR":
+        # OR operator: All features are treated as optional
+        combined_criteria = must_have_criteria + optional_criteria
+        if len(combined_criteria) == 1:
+            all_criteria.append(combined_criteria[0])
+        elif combined_criteria:
+            all_criteria.append({"$or": combined_criteria})
+    
+    else:  # Default "AND" operator
+        if must_have_criteria and optional_criteria:
+            # 🔧 CRITICAL FIX: For mixed types with AND operator, be more flexible
+            if is_mixed_types:
+                # Mixed types with AND - use OR between categories but AND within
+                category_groups = {"attractions": [], "infrastructure": [], "tourism": []}
+                
+                # Categorize all criteria (both must-have and optional)
+                all_combined = must_have_criteria + optional_criteria
+                for criterion in all_combined:
+                    if "features.localAttractions" in str(criterion):
+                        category_groups["attractions"].append(criterion)
+                    elif "features.infrastructure" in str(criterion):
+                        category_groups["infrastructure"].append(criterion)
+                    elif "features.tourismServices" in str(criterion):
+                        category_groups["tourism"].append(criterion)
+                
+                # Build category-wise criteria
+                category_criteria = []
+                for category, criteria in category_groups.items():
+                    if criteria:
+                        if len(criteria) == 1:
+                            category_criteria.append(criteria[0])
+                        else:
+                            category_criteria.append({"$and": criteria})
+                
+                # Use OR between categories for better results
+                if len(category_criteria) == 1:
+                    all_criteria.append(category_criteria[0])
+                else:
+                    all_criteria.append({"$or": category_criteria})
+            else:
+                # Same category - standard AND logic
+                all_criteria.extend(must_have_criteria)
+                if len(optional_criteria) == 1:
+                    all_criteria.append(optional_criteria[0])
+                else:
+                    all_criteria.append({"$or": optional_criteria})
+        elif must_have_criteria:
+            # Only must-have features
+            if is_mixed_types and len(must_have_criteria) > 2:
+                # For mixed types with multiple features, use OR for broader results
+                all_criteria.append({"$or": must_have_criteria})
+            else:
+                all_criteria.extend(must_have_criteria)
+        elif optional_criteria:
+            # Only optional features - use OR
+            if len(optional_criteria) == 1:
+                all_criteria.append(optional_criteria[0])
+            else:
+                all_criteria.append({"$or": optional_criteria})
 
     # Apply the combined criteria to the filter
     if all_criteria:
@@ -517,6 +621,57 @@ async def enhanced_filter_homestays(filter_request: HomestayFilterRequest) -> Ho
         if filtered_count == 0:
             await run_diagnostic_queries(filter_request, mongo_filter)
         
+        # --- RELAXED FALLBACK: Broaden search if no results ---
+        relaxed_applied = False
+        if filtered_count == 0:
+            # Prepare a relaxed version of the request
+            relaxed_request = HomestayFilterRequest(**filter_request.dict())
+
+            # Determine present categories
+            has_attractions = bool(relaxed_request.local_attractions or relaxed_request.any_local_attractions)
+            has_infrastructure = bool(relaxed_request.infrastructure or relaxed_request.any_infrastructure)
+            has_tourism = bool(relaxed_request.tourism_services or relaxed_request.any_tourism_services)
+
+            # Move must-have features to optional to broaden results
+            def move_to_optional(any_field: str, must_field: str):
+                must_vals = getattr(relaxed_request, must_field)
+                if must_vals:
+                    existing_any = getattr(relaxed_request, any_field) or []
+                    # Merge and deduplicate while preserving order
+                    merged = []
+                    for v in existing_any + must_vals:
+                        if v and v not in merged:
+                            merged.append(v)
+                    setattr(relaxed_request, any_field, merged)
+                    setattr(relaxed_request, must_field, None)
+
+            move_to_optional('any_local_attractions', 'local_attractions')
+            move_to_optional('any_infrastructure', 'infrastructure')
+            move_to_optional('any_tourism_services', 'tourism_services')
+
+            # Re-evaluate categories after moving
+            has_attractions = bool(relaxed_request.local_attractions or relaxed_request.any_local_attractions)
+            has_infrastructure = bool(relaxed_request.infrastructure or relaxed_request.any_infrastructure)
+            has_tourism = bool(relaxed_request.tourism_services or relaxed_request.any_tourism_services)
+            feature_type_count = sum([has_attractions, has_infrastructure, has_tourism])
+
+            # Choose a more permissive operator
+            relaxed_request.logical_operator = "MIXED" if feature_type_count > 1 else "OR"
+
+            # Build and test relaxed filter
+            relaxed_filter = await build_enhanced_mongodb_filter(relaxed_request)
+            print(f"🔍 RELAXED - Generated Filter: {relaxed_filter}")
+            relaxed_count = await collection.count_documents(relaxed_filter)
+            print(f"🔍 RELAXED - Filtered count: {relaxed_count}")
+
+            if relaxed_count > 0:
+                # Adopt relaxed results
+                filter_request = relaxed_request
+                mongo_filter = relaxed_filter
+                filtered_count = relaxed_count
+                relaxed_applied = True
+                print("🔧 Applied relaxed search: converted must-have features to optional and switched logical operator for broader results")
+        
         # Get total count
         total_count = await collection.count_documents({})
 
@@ -540,6 +695,8 @@ async def enhanced_filter_homestays(filter_request: HomestayFilterRequest) -> Ho
         
         # Generate suggestions for better filtering
         suggestions = await generate_filter_suggestions(filter_request, filtered_count)
+        if 'relaxed_applied' in locals() and relaxed_applied:
+            suggestions.insert(0, f"Applied relaxed search automatically (operator={filter_request.logical_operator}). Consider specifying fewer must-have features or using any_* lists.")
         
         return HomestayFilterResponse(
             homestayUsernames=usernames,

@@ -133,6 +133,8 @@ class EnhancedFeatureSearchHelper:
         'local diseshad': ['Local Dishes/स्थानीय परिकारहरू'],  # Common misspelling
         'local food': ['Local Dishes/स्थानीय परिकारहरू'],
         'traditional dishes': ['Local Dishes/स्थानीय परिकारहरू'],  # Map to same value
+        'traditional cuisine': ['Local Dishes/स्थानीय परिकारहरू'],  # NEW: Map traditional cuisine
+        'cuisine': ['Local Dishes/स्थानीय परिकारहरू'],  # NEW: Map simple cuisine
     }
     
     @classmethod
@@ -141,7 +143,7 @@ class EnhancedFeatureSearchHelper:
         import re
         query_lower = query.lower().strip()
         filters = {}
-
+    
         # Initialize feature sets
         must_attractions = set()
         must_infrastructure = set()
@@ -149,7 +151,7 @@ class EnhancedFeatureSearchHelper:
         optional_attractions = set()
         optional_infrastructure = set()
         optional_tourism_services = set()
-
+    
         # 🔧 STEP 1: Handle parentheses-based structured queries like "with (A, B, C) and if possible (X, Y)"
         parentheses_pattern = r'\(([^)]+)\).*?(?:and if possible|optionally|if available).*?\(([^)]+)\)'
         paren_match = re.search(parentheses_pattern, query_lower)
@@ -190,9 +192,17 @@ class EnhancedFeatureSearchHelper:
                     cls._extract_features_from_text(full_text, optional_attractions, optional_infrastructure, optional_tourism_services)
                     filters['logical_operator'] = 'OR'
                 else:
-                    # Default: treat all as must-have (AND logic)
-                    cls._extract_features_from_text(full_text, must_attractions, must_infrastructure, must_tourism_services)
-                    filters['logical_operator'] = 'AND'
+                    # 🔧 ENHANCED LOGIC: Check for mixed feature types
+                    has_mixed_types = cls._contains_mixed_feature_types(full_text)
+                    
+                    if has_mixed_types:
+                        # For mixed feature types, use more permissive logic
+                        cls._extract_features_from_text(full_text, optional_attractions, optional_infrastructure, optional_tourism_services)
+                        filters['logical_operator'] = 'OR'
+                    else:
+                        # Single feature type - treat as must-have
+                        cls._extract_features_from_text(full_text, must_attractions, must_infrastructure, must_tourism_services)
+                        filters['logical_operator'] = 'AND'
 
         # 🔧 SET FILTER PARAMETERS
         if must_attractions:
@@ -208,14 +218,28 @@ class EnhancedFeatureSearchHelper:
         if optional_tourism_services:
             filters['any_tourism_services'] = list(optional_tourism_services)
 
-        # Set logical operator based on detected feature types
-        if must_attractions or must_infrastructure or must_tourism_services:
-            if optional_attractions or optional_infrastructure or optional_tourism_services:
-                filters['logical_operator'] = 'MIXED'  # Both must-have AND optional features
-            else:
-                filters['logical_operator'] = 'AND'  # Only must-have features
-        elif optional_attractions or optional_infrastructure or optional_tourism_services:
+        # 🔧 ENHANCED LOGICAL OPERATOR SETTING
+        has_must_features = bool(must_attractions or must_infrastructure or must_tourism_services)
+        has_optional_features = bool(optional_attractions or optional_infrastructure or optional_tourism_services)
+        
+        if has_must_features and has_optional_features:
+            filters['logical_operator'] = 'MIXED'  # Both must-have AND optional features
+        elif has_optional_features:
             filters['logical_operator'] = 'OR'  # Only optional features
+        elif has_must_features:
+            # Check if mixed feature types - if so, be more permissive
+            feature_types = 0
+            if must_attractions:
+                feature_types += 1
+            if must_infrastructure:
+                feature_types += 1  
+            if must_tourism_services:
+                feature_types += 1
+            
+            if feature_types > 1:
+                filters['logical_operator'] = 'OR'  # Mixed must-have features - use OR for better results
+            else:
+                filters['logical_operator'] = 'AND'  # Single category must-have features
         else:
             filters['logical_operator'] = 'AND'  # Default
 
@@ -275,6 +299,29 @@ class EnhancedFeatureSearchHelper:
         return filters
     
     @classmethod
+    def _contains_mixed_feature_types(cls, text: str) -> bool:
+        """Check if query contains features from multiple categories (attractions + infrastructure/tourism)"""
+        attraction_count = 0
+        infrastructure_count = 0
+        tourism_count = 0
+        
+        # Count how many different feature types are mentioned
+        for keyword in cls.ATTRACTION_KEYWORDS:
+            if keyword in text:
+                attraction_count += 1
+                
+        for keyword in cls.INFRASTRUCTURE_KEYWORDS:
+            if keyword in text:
+                infrastructure_count += 1
+                
+        for keyword in cls.TOURISM_KEYWORDS:
+            if keyword in text:
+                tourism_count += 1
+        
+        # If we have attractions AND (infrastructure OR tourism), it's mixed
+        return attraction_count > 0 and (infrastructure_count > 0 or tourism_count > 0)
+    
+    @classmethod
     def _extract_features_from_text(cls, text: str, attractions_set: set, infrastructure_set: set, tourism_set: set):
         """Helper method to extract features from text and add them to appropriate sets"""
         if not text or not text.strip():
@@ -285,10 +332,10 @@ class EnhancedFeatureSearchHelper:
         # Split by commas, 'and', 'with', but be careful not to split bilingual terms
         parts = re.split(r'(?:,\s*|\s+and\s+|\s+with\s+)(?![^/]*\s)', text)
         
-        # Also check the full text for compound terms
-        all_text_parts = [text] + [part.strip() for part in parts if part.strip()]
+        # Also try to match the full text as a single unit for better context
+        all_parts = parts + [text]
         
-        for part in all_text_parts:
+        for part in all_parts:
             part = part.strip()
             if not part:
                 continue
@@ -301,6 +348,52 @@ class EnhancedFeatureSearchHelper:
             for keyword, tourism_terms in cls.TOURISM_KEYWORDS.items():
                 if keyword in part:
                     tourism_set.update(tourism_terms)
+
+    @classmethod
+    def map_simple_keywords_to_database_values(cls, keywords: List[str], category: str) -> List[str]:
+        """🔧 NEW: Map simple keywords to exact database values for direct API calls"""
+        if not keywords:
+            return []
+        
+        mapped_values = set()
+        
+        # Choose the appropriate keyword mapping based on category
+        if category == 'attractions':
+            keyword_map = cls.ATTRACTION_KEYWORDS
+        elif category == 'infrastructure':
+            keyword_map = cls.INFRASTRUCTURE_KEYWORDS
+        elif category == 'tourism':
+            keyword_map = cls.TOURISM_KEYWORDS
+        else:
+            return keywords  # Return as-is if unknown category
+        
+        for keyword in keywords:
+            if not keyword or not isinstance(keyword, str):
+                continue
+                
+            keyword_lower = keyword.lower().strip()
+            found_match = False
+            
+            # Try exact match first
+            for map_key, db_values in keyword_map.items():
+                if keyword_lower == map_key.lower():
+                    mapped_values.update(db_values)
+                    found_match = True
+                    break
+            
+            # If no exact match, try partial match
+            if not found_match:
+                for map_key, db_values in keyword_map.items():
+                    if keyword_lower in map_key.lower() or map_key.lower() in keyword_lower:
+                        mapped_values.update(db_values)
+                        found_match = True
+                        break
+            
+            # If still no match, keep original keyword
+            if not found_match:
+                mapped_values.add(keyword)
+        
+        return list(mapped_values)
 
     @classmethod
     def fuzzy_keyword_match(cls, query: str, keywords: Dict[str, List[str]]) -> List[str]:

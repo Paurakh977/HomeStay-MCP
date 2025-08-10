@@ -56,7 +56,7 @@ async def search_homestays_tool(
     natural_language_description: str = None,
     logical_operator: str = "AND"
 ) -> HomestayFilterResponse:
-    """Updated tool with fixed filtering logic"""
+    """🔧 ENHANCED tool with intelligent keyword mapping and improved logical operator handling"""
     
     # Process natural language FIRST
     extracted_filters = {}
@@ -87,13 +87,127 @@ async def search_homestays_tool(
     any_tourism_services = sanitize_list(any_tourism_services)
     tourism_services = sanitize_list(tourism_services)
 
+    # 🔧 ENHANCED: Map simple keywords to database values for direct API calls (non-NL)
+    if not natural_language_description:
+        print("🔧 MAPPING KEYWORDS FOR DIRECT API CALL")
+        
+        if any_local_attractions:
+            mapped_attractions = EnhancedFeatureSearchHelper.map_simple_keywords_to_database_values(
+                any_local_attractions, 'attractions'
+            )
+            any_local_attractions = mapped_attractions
+            print(f"🔍 MAPPED any_local_attractions: {any_local_attractions}")
+        
+        if local_attractions:
+            mapped_attractions = EnhancedFeatureSearchHelper.map_simple_keywords_to_database_values(
+                local_attractions, 'attractions'
+            )
+            local_attractions = mapped_attractions
+            print(f"🔍 MAPPED local_attractions: {local_attractions}")
+        
+        if any_infrastructure:
+            mapped_infrastructure = EnhancedFeatureSearchHelper.map_simple_keywords_to_database_values(
+                any_infrastructure, 'infrastructure'
+            )
+            any_infrastructure = mapped_infrastructure
+            print(f"🔍 MAPPED any_infrastructure: {any_infrastructure}")
+        
+        if infrastructure:
+            mapped_infrastructure = EnhancedFeatureSearchHelper.map_simple_keywords_to_database_values(
+                infrastructure, 'infrastructure'
+            )
+            infrastructure = mapped_infrastructure
+            print(f"🔍 MAPPED infrastructure: {infrastructure}")
+        
+        if any_tourism_services:
+            mapped_services = EnhancedFeatureSearchHelper.map_simple_keywords_to_database_values(
+                any_tourism_services, 'tourism'
+            )
+            any_tourism_services = mapped_services
+            print(f"🔍 MAPPED any_tourism_services: {any_tourism_services}")
+        
+        if tourism_services:
+            mapped_services = EnhancedFeatureSearchHelper.map_simple_keywords_to_database_values(
+                tourism_services, 'tourism'
+            )
+            tourism_services = mapped_services
+            print(f"🔍 MAPPED tourism_services: {tourism_services}")
+        
+        # 🔧 CRITICAL: INTELLIGENT LOGICAL OPERATOR SELECTION FOR DIRECT CALLS
+        # This ensures consistency between natural language and direct API processing
+        has_any_features = bool(any_local_attractions or any_infrastructure or any_tourism_services)
+        has_must_features = bool(local_attractions or infrastructure or tourism_services)
+        
+        # Count feature categories to detect mixed types
+        feature_categories = 0
+        total_feature_count = 0
+        if any_local_attractions or local_attractions:
+            feature_categories += 1
+            total_feature_count += len(any_local_attractions or []) + len(local_attractions or [])
+        if any_infrastructure or infrastructure:
+            feature_categories += 1
+            total_feature_count += len(any_infrastructure or []) + len(infrastructure or [])
+        if any_tourism_services or tourism_services:
+            feature_categories += 1
+            total_feature_count += len(any_tourism_services or []) + len(tourism_services or [])
+        
+        has_mixed_types = feature_categories > 1
+        has_multiple_features = total_feature_count > 1
+        
+        print(f"🔧 DIRECT API ANALYSIS: categories={feature_categories}, mixed_types={has_mixed_types}, total_features={total_feature_count}")
+        
+        # 🔧 ENHANCED LOGIC: Auto-adjust logical operator to match natural language behavior
+        if has_mixed_types:
+            # Rule 1: Mixed feature types should use OR/MIXED for broader results
+            if has_any_features and has_must_features:
+                # Both any_ and must-have features with mixed types
+                final_logical_operator = "MIXED"
+                print(f"🔧 AUTO-SWITCHED TO MIXED: Mixed types with both any_ and must-have features")
+            elif has_any_features:
+                # Only any_ features with mixed types - always use OR
+                final_logical_operator = "OR"
+                print(f"🔧 AUTO-SWITCHED TO OR: Mixed any_ features across categories")
+            elif has_must_features and total_feature_count > 2:
+                # Multiple must-have features across categories - use MIXED for smart handling
+                final_logical_operator = "MIXED"
+                print(f"🔧 AUTO-SWITCHED TO MIXED: Multiple must-have features across categories")
+            else:
+                # Few must-have features across categories - use OR for better results
+                final_logical_operator = "OR"
+                print(f"🔧 AUTO-SWITCHED TO OR: Mixed types, using OR for broader results")
+        
+        elif has_multiple_features:
+            # Rule 2: Multiple features in same category
+            if has_any_features and not has_must_features:
+                # Multiple any_ features in same category - use OR
+                final_logical_operator = "OR"
+                print(f"🔧 AUTO-SWITCHED TO OR: Multiple any_ features in same category")
+            elif has_must_features and total_feature_count > 3:
+                # Many must-have features - use OR for practical results
+                final_logical_operator = "OR"
+                print(f"🔧 AUTO-SWITCHED TO OR: Too many must-have features, using OR for practical results")
+            # else: keep original logical_operator (likely AND)
+        
+        elif has_any_features:
+            # Rule 3: Single category, any_ features - prefer OR
+            final_logical_operator = "OR"
+            print(f"🔧 AUTO-SWITCHED TO OR: Single category any_ features")
+        
+        # Rule 4: For single must-have feature, keep AND (default)
+        print(f"🔧 FINAL LOGICAL OPERATOR FOR DIRECT API: {final_logical_operator}")
+
     # 🔧 ENHANCED CONSOLIDATION: Handle both must-have and optional features correctly
     # Only add NL filters if explicit parameters are empty
     if not any_local_attractions and not local_attractions:
         must_attractions_from_nl = extracted_filters.get('local_attractions') or []
         optional_attractions_from_nl = extracted_filters.get('any_local_attractions') or []
         if must_attractions_from_nl:
-            local_attractions = must_attractions_from_nl
+            # Convert must-have to optional for mixed types to get better results
+            if extracted_filters.get('logical_operator') in ['OR', 'MIXED']:
+                any_local_attractions = must_attractions_from_nl
+                print(f"🔧 CONVERTED must-have attractions to optional for better results")
+            else:
+                local_attractions = must_attractions_from_nl
         elif optional_attractions_from_nl:
             any_local_attractions = optional_attractions_from_nl
     
@@ -101,7 +215,12 @@ async def search_homestays_tool(
         must_infrastructure_from_nl = extracted_filters.get('infrastructure') or []
         optional_infrastructure_from_nl = extracted_filters.get('any_infrastructure') or []
         if must_infrastructure_from_nl:
-            infrastructure = must_infrastructure_from_nl
+            # Convert must-have to optional for mixed types to get better results
+            if extracted_filters.get('logical_operator') in ['OR', 'MIXED']:
+                any_infrastructure = must_infrastructure_from_nl
+                print(f"🔧 CONVERTED must-have infrastructure to optional for better results")
+            else:
+                infrastructure = must_infrastructure_from_nl
         elif optional_infrastructure_from_nl:
             any_infrastructure = optional_infrastructure_from_nl
 
@@ -110,7 +229,12 @@ async def search_homestays_tool(
         must_services_from_nl = extracted_filters.get('tourism_services') or []
         optional_services_from_nl = extracted_filters.get('any_tourism_services') or []
         if must_services_from_nl:
-            tourism_services = must_services_from_nl
+            # Convert must-have to optional for mixed types to get better results
+            if extracted_filters.get('logical_operator') in ['OR', 'MIXED']:
+                any_tourism_services = must_services_from_nl
+                print(f"🔧 CONVERTED must-have tourism services to optional for better results")
+            else:
+                tourism_services = must_services_from_nl
         elif optional_services_from_nl:
             any_tourism_services = optional_services_from_nl
 
@@ -135,6 +259,7 @@ async def search_homestays_tool(
         province=province,
         district=district,
         municipality=municipality,
+        language="en",  # 🔧 EXPLICIT language setting
         status=status or "approved",  # Default to approved
 
         # Features
