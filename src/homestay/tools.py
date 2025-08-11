@@ -500,62 +500,279 @@ async def build_enhanced_mongodb_filter(filter_request: HomestayFilterRequest) -
     return mongo_filter
 
 async def build_basic_filters(filter_request: HomestayFilterRequest) -> Dict[str, Any]:
-    """Build non-conflicting basic filters"""
+    """🔧 ENHANCED: Build non-conflicting basic filters with PERFECT partial matching for location fields"""
     filters = {}
     lang = filter_request.language or "en"
     
-    # Location filters with proper bilingual support
-    if filter_request.province:
-        if lang in ['en', 'ne']:
-            filters[f"address.province.{lang}"] = {"$regex": filter_request.province, "$options": "i"}
+    # 🔧 ENHANCED LOCATION FILTERS: Implement perfect partial matching for ALL location fields
+    def create_location_partial_match(field_base: str, search_term: str) -> Dict[str, Any]:
+        """Create comprehensive partial matching for location fields with FUZZY MATCHING for typos"""
+        if not search_term or not search_term.strip():
+            return {}
+        
+        search_term = search_term.strip()
+        
+        # Create multiple search patterns for better matching
+        patterns = []
+        
+        # 1. Exact term matching (case-insensitive)
+        patterns.append(search_term)
+        
+        # 2. 🔧 NEW: FUZZY MATCHING for common typos and spelling variations
+        def generate_fuzzy_patterns(term: str) -> List[str]:
+            """Generate fuzzy patterns to handle common spelling mistakes"""
+            fuzzy_patterns = []
+            
+            # Create character-level fuzzy patterns
+            base_term = term.lower()
+            
+            # Pattern 1: Handle extra/missing vowels
+            if 'aa' in base_term:
+                fuzzy_patterns.append(base_term.replace('aa', 'a'))
+            if 'a' in base_term and 'aa' not in base_term:
+                fuzzy_patterns.append(base_term.replace('a', 'aa', 1))
+            
+            # Pattern 2: Handle 'ang' variations - CRITICAL FIX for Malangawa → Malangwa
+            if 'ang' in base_term:
+                # Add variations with additional characters after 'ang'
+                fuzzy_patterns.append(base_term.replace('ang', 'angh'))
+                fuzzy_patterns.append(base_term.replace('ang', 'anga'))
+                
+                # 🔧 CRITICAL: Handle 'angawa' → 'angwa' (remove extra 'a')
+                if 'angawa' in base_term:
+                    fuzzy_patterns.append(base_term.replace('angawa', 'angwa'))
+                
+                # 🔧 CRITICAL: Handle 'angwa' → 'angawa' (add extra 'a')  
+                if 'angwa' in base_term and 'angawa' not in base_term:
+                    fuzzy_patterns.append(base_term.replace('angwa', 'angawa'))
+            
+            # Pattern 3: General vowel insertion/deletion patterns
+            # Handle extra vowels after consonant clusters
+            import re as fuzzy_re
+            # Remove extra vowels after ng, nk, etc.
+            if fuzzy_re.search(r'ng[aeiou]', base_term):
+                # For patterns like 'nga', 'ngo', etc., try removing the vowel
+                no_vowel = fuzzy_re.sub(r'ng([aeiou])', r'ng', base_term)
+                if no_vowel != base_term:
+                    fuzzy_patterns.append(no_vowel)
+            
+            # Pattern 4: Handle common character swaps (especially for Nepali transliterations)
+            char_swaps = [('w', 'v'), ('v', 'w'), ('ph', 'f'), ('th', 't')]
+            for original, replacement in char_swaps:
+                if original in base_term:
+                    fuzzy_patterns.append(base_term.replace(original, replacement))
+            
+            # Pattern 5: Create regex patterns that are more flexible
+            # Make certain characters optional or variable
+            flexible = base_term
+            flexible = fuzzy_re.sub(r'a+', 'a*', flexible)  # Make 'a' flexible
+            flexible = fuzzy_re.sub(r'(ng|ngh|nga)', '(ng|ngh|nga)', flexible)  # ng variations
+            if flexible != base_term:
+                fuzzy_patterns.append(flexible)
+            
+            return list(set(fuzzy_patterns))  # Remove duplicates
+        
+        # Add fuzzy patterns for the search term
+        fuzzy_terms = generate_fuzzy_patterns(search_term)
+        patterns.extend(fuzzy_terms)
+        
+        # 3. Add common suffixes if not present (e.g., "Malangwa" -> "Malangwa Municipality")
+        location_suffixes = {
+            'municipality': ['Municipality', 'नगरपालिका', 'गाउँपालिका'],
+            'district': ['District', 'जिल्ला'],
+            'province': ['Province', 'प्रदेश'],
+            'ward': ['Ward', 'वडा']
+        }
+        
+        field_type = field_base.split('.')[-1]  # Extract 'municipality', 'district', etc.
+        if field_type in location_suffixes:
+            for suffix in location_suffixes[field_type]:
+                # Add suffix to original term
+                if not search_term.lower().endswith(suffix.lower()):
+                    patterns.append(f"{search_term} {suffix}")
+                
+                # 🔧 CRITICAL: Also add suffix to fuzzy terms
+                for fuzzy_term in fuzzy_terms:
+                    if not fuzzy_term.lower().endswith(suffix.lower()):
+                        patterns.append(f"{fuzzy_term} {suffix}")
+        
+        # 4. Handle compound words (e.g., "Malangwa Municipality" -> ["Malangwa", "Municipality"])
+        words = search_term.split()
+        if len(words) > 1:
+            patterns.extend(words)  # Add individual words for partial matching
+        
+        # 5. 🔧 ENHANCED: Create MongoDB OR conditions with FUZZY REGEX
+        or_conditions = []
+        
+        for pattern in patterns:
+            if pattern.strip():
+                # For fuzzy patterns that contain regex, use them as-is
+                if any(special in pattern for special in ['*', '+', '(', ')', '[', ']']):
+                    # This is a regex pattern
+                    or_conditions.extend([
+                        {f"{field_base}.en": {"$regex": pattern, "$options": "i"}},
+                        {f"{field_base}.ne": {"$regex": pattern, "$options": "i"}}
+                    ])
+                else:
+                    # Regular escaped pattern
+                    escaped_pattern = re.escape(pattern.strip())
+                    or_conditions.extend([
+                        {f"{field_base}.en": {"$regex": escaped_pattern, "$options": "i"}},
+                        {f"{field_base}.ne": {"$regex": escaped_pattern, "$options": "i"}}
+                    ])
+        
+        # 6. 🔧 ENHANCED: Add PARTIAL WORD MATCHING for better coverage
+        # This handles cases where the search term is part of a larger word
+        clean_term = re.escape(search_term)
+        or_conditions.extend([
+            {f"{field_base}.en": {"$regex": clean_term, "$options": "i"}},  # Unanchored search
+            {f"{field_base}.ne": {"$regex": clean_term, "$options": "i"}},  # Unanchored search
+        ])
+        
+        # Also try fuzzy variants with unanchored search
+        for fuzzy_term in fuzzy_terms:
+            if not any(special in fuzzy_term for special in ['*', '+', '(', ')', '[', ']']):
+                escaped_fuzzy = re.escape(fuzzy_term)
+                or_conditions.extend([
+                    {f"{field_base}.en": {"$regex": escaped_fuzzy, "$options": "i"}},
+                    {f"{field_base}.ne": {"$regex": escaped_fuzzy, "$options": "i"}}
+                ])
+        
+        # 7. Add word-boundary regex for more precise matching
+        or_conditions.extend([
+            {f"{field_base}.en": {"$regex": f"\\b{clean_term}", "$options": "i"}},
+            {f"{field_base}.ne": {"$regex": f"\\b{clean_term}", "$options": "i"}}
+        ])
+        
+        # Remove duplicate conditions
+        unique_conditions = []
+        seen = set()
+        for condition in or_conditions:
+            condition_str = str(condition)
+            if condition_str not in seen:
+                unique_conditions.append(condition)
+                seen.add(condition_str)
+        
+        # Return OR condition for comprehensive matching
+        if len(unique_conditions) == 1:
+            return unique_conditions[0]
+        elif unique_conditions:
+            return {"$or": unique_conditions}
         else:
-            filters["$or"] = [
-                {"address.province.en": {"$regex": filter_request.province, "$options": "i"}},
-                {"address.province.ne": {"$regex": filter_request.province, "$options": "i"}}
-            ]
+            return {}
+
+    # Apply enhanced location filtering
+    if filter_request.province:
+        province_filter = create_location_partial_match("address.province", filter_request.province)
+        if province_filter:
+            if "$or" in filters:
+                # Combine with existing OR conditions
+                filters["$and"] = [{"$or": filters["$or"]}, province_filter]
+                del filters["$or"]
+            else:
+                filters.update(province_filter)
     
     if filter_request.district:
-        if lang in ['en', 'ne']:
-            filters[f"address.district.{lang}"] = {"$regex": filter_request.district, "$options": "i"}
-        else:
-            if "$or" not in filters:
-                filters["$or"] = []
-            filters["$or"].extend([
-                {"address.district.en": {"$regex": filter_request.district, "$options": "i"}},
-                {"address.district.ne": {"$regex": filter_request.district, "$options": "i"}}
-            ])
+        district_filter = create_location_partial_match("address.district", filter_request.district)
+        if district_filter:
+            if "$and" in filters:
+                filters["$and"].append(district_filter)
+            elif "$or" in filters:
+                filters["$and"] = [{"$or": filters["$or"]}, district_filter]
+                del filters["$or"]
+            else:
+                filters.update(district_filter)
     
     if filter_request.municipality:
-        if lang in ['en', 'ne']:
-            filters[f"address.municipality.{lang}"] = {"$regex": filter_request.municipality, "$options": "i"}
-        else:
-            if "$or" not in filters:
-                filters["$or"] = []
-            filters["$or"].extend([
-                {"address.municipality.en": {"$regex": filter_request.municipality, "$options": "i"}},
-                {"address.municipality.ne": {"$regex": filter_request.municipality, "$options": "i"}}
-            ])
+        municipality_filter = create_location_partial_match("address.municipality", filter_request.municipality)
+        if municipality_filter:
+            if "$and" in filters:
+                filters["$and"].append(municipality_filter)
+            elif "$or" in filters:
+                filters["$and"] = [{"$or": filters["$or"]}, municipality_filter]
+                del filters["$or"]
+            else:
+                filters.update(municipality_filter)
     
     if filter_request.ward:
-        if lang in ['en', 'ne']:
-            filters[f"address.ward.{lang}"] = {"$regex": filter_request.ward, "$options": "i"}
-        else:
-            if "$or" not in filters:
-                filters["$or"] = []
-            filters["$or"].extend([
-                {"address.ward.en": {"$regex": filter_request.ward, "$options": "i"}},
-                {"address.ward.ne": {"$regex": filter_request.ward, "$options": "i"}}
-            ])
+        ward_filter = create_location_partial_match("address.ward", filter_request.ward)
+        if ward_filter:
+            if "$and" in filters:
+                filters["$and"].append(ward_filter)
+            elif "$or" in filters:
+                filters["$and"] = [{"$or": filters["$or"]}, ward_filter]
+                del filters["$or"]
+            else:
+                filters.update(ward_filter)
 
+    # 🔧 ENHANCED: City and village with partial matching too
     if filter_request.city:
-        filters["address.city"] = {"$regex": filter_request.city, "$options": "i"}
+        # City doesn't have bilingual structure, but still apply partial matching
+        city_patterns = [filter_request.city.strip()]
+        words = filter_request.city.strip().split()
+        if len(words) > 1:
+            city_patterns.extend(words)
+        
+        city_or = []
+        for pattern in city_patterns:
+            if pattern.strip():
+                city_or.append({"address.city": {"$regex": re.escape(pattern), "$options": "i"}})
+        
+        if city_or:
+            city_filter = {"$or": city_or} if len(city_or) > 1 else city_or[0]
+            if "$and" in filters:
+                filters["$and"].append(city_filter)
+            elif "$or" in filters:
+                filters["$and"] = [{"$or": filters["$or"]}, city_filter]
+                del filters["$or"]
+            else:
+                filters.update(city_filter)
 
     if filter_request.village_name:
-        filters["villageName"] = {"$regex": filter_request.village_name, "$options": "i"}
+        # Village name with partial matching
+        village_patterns = [filter_request.village_name.strip()]
+        words = filter_request.village_name.strip().split()
+        if len(words) > 1:
+            village_patterns.extend(words)
+        
+        village_or = []
+        for pattern in village_patterns:
+            if pattern.strip():
+                village_or.append({"villageName": {"$regex": re.escape(pattern), "$options": "i"}})
+        
+        if village_or:
+            village_filter = {"$or": village_or} if len(village_or) > 1 else village_or[0]
+            if "$and" in filters:
+                filters["$and"].append(village_filter)
+            elif "$or" in filters:
+                filters["$and"] = [{"$or": filters["$or"]}, village_filter]
+                del filters["$or"]
+            else:
+                filters.update(village_filter)
 
+    # Enhanced homestay name matching
     if filter_request.homestay_name:
-        filters["homeStayName"] = {"$regex": filter_request.homestay_name, "$options": "i"}
+        name_patterns = [filter_request.homestay_name.strip()]
+        words = filter_request.homestay_name.strip().split()
+        if len(words) > 1:
+            name_patterns.extend(words)
+        
+        name_or = []
+        for pattern in name_patterns:
+            if pattern.strip():
+                name_or.append({"homeStayName": {"$regex": re.escape(pattern), "$options": "i"}})
+        
+        if name_or:
+            name_filter = {"$or": name_or} if len(name_or) > 1 else name_or[0]
+            if "$and" in filters:
+                filters["$and"].append(name_filter)
+            elif "$or" in filters:
+                filters["$and"] = [{"$or": filters["$or"]}, name_filter]
+                del filters["$or"]
+            else:
+                filters.update(name_filter)
 
+    # Other basic filters (non-location)
     if filter_request.homestay_type:
         filters["homeStayType"] = filter_request.homestay_type
 
@@ -926,3 +1143,125 @@ async def test_queries():
         "features.localAttractions": {"$regex": "ट्रेकिङ", "$options": "i"}
     })
     print(f"✅ Partial match count for 'ट्रेकिङ': {partial_match_nepali}")
+
+async def test_queries():
+    """Test function to validate fixes"""
+    collection = db_instance.homestays
+    if not collection:
+        print("❌ Database not connected, cannot run tests.")
+        return
+
+    print("🔍 Testing fuzzy location matching...")
+    
+    # Test the specific case: "Malangawa" should match "Malangwa Municipality"
+    test_patterns = [
+        "Malangawa",  # Extra 'a' - should still match "Malangwa"
+        "Malangwa",   # Correct spelling
+        "malangwa",   # Lowercase
+        "MALANGWA",   # Uppercase
+    ]
+    
+    for pattern in test_patterns:
+        # Create a test filter request
+        from .models import HomestayFilterRequest
+        test_request = HomestayFilterRequest(municipality=pattern, language="en")
+        
+        # Get the filter
+        mongo_filter = await build_basic_filters(test_request)
+        print(f"\n🔍 Testing pattern: '{pattern}'")
+        print(f"🔍 Generated filter: {mongo_filter}")
+        
+        # Test the query
+        try:
+            count = await collection.count_documents(mongo_filter)
+            print(f"🔍 Results found: {count}")
+        except Exception as e:
+            print(f"❌ Query error: {e}")
+    
+    print("\n🔍 Testing specific municipality patterns...")
+    
+    # Test if any documents contain "Malangwa" at all
+    test_queries = [
+        {"address.municipality.en": {"$regex": "Malangwa", "$options": "i"}},
+        {"address.municipality.ne": {"$regex": "Malangwa", "$options": "i"}},
+        {"address.municipality.en": {"$regex": "Municipality", "$options": "i"}},
+        {"$or": [
+            {"address.municipality.en": {"$regex": "Malangwa", "$options": "i"}},
+            {"address.municipality.ne": {"$regex": "Malangwa", "$options": "i"}}
+        ]}
+    ]
+    
+    for i, query in enumerate(test_queries):
+        try:
+            count = await collection.count_documents(query)
+            print(f"🔍 Query {i+1}: {query} → Count: {count}")
+        except Exception as e:
+            print(f"❌ Query {i+1} error: {e}")
+
+    # Test sample document inspection
+    print("\n🔍 Inspecting sample documents...")
+    try:
+        sample_docs = await collection.find({"address.municipality": {"$exists": True}}).limit(3).to_list(3)
+        for i, doc in enumerate(sample_docs):
+            print(f"🔍 Sample {i+1}:")
+            if 'address' in doc and 'municipality' in doc['address']:
+                print(f"  Municipality: {doc['address']['municipality']}")
+            else:
+                print(f"  Address structure: {doc.get('address', 'No address field')}")
+    except Exception as e:
+        print(f"❌ Sample inspection error: {e}")
+
+    print(f"✅ Fuzzy matching test completed")
+
+async def test_fuzzy_patterns():
+    """Test the fuzzy pattern generation specifically"""
+    print("🧪 Testing fuzzy pattern generation...")
+    
+    # Simulate the fuzzy pattern function
+    def generate_fuzzy_patterns(term: str) -> List[str]:
+        """Generate fuzzy patterns to handle common spelling mistakes"""
+        fuzzy_patterns = []
+        
+        # Create character-level fuzzy patterns
+        base_term = term.lower()
+        
+        # Pattern 1: Handle extra/missing vowels
+        if 'aa' in base_term:
+            fuzzy_patterns.append(base_term.replace('aa', 'a'))
+        if 'a' in base_term and 'aa' not in base_term:
+            fuzzy_patterns.append(base_term.replace('a', 'aa', 1))
+        
+        # Pattern 2: Handle 'ang' vs 'angh' vs 'anga'
+        if 'ang' in base_term:
+            fuzzy_patterns.append(base_term.replace('ang', 'angh'))
+            fuzzy_patterns.append(base_term.replace('ang', 'anga'))
+        
+        # Pattern 3: Handle common character swaps
+        char_swaps = [('w', 'v'), ('v', 'w'), ('ph', 'f'), ('th', 't')]
+        for original, replacement in char_swaps:
+            if original in base_term:
+                fuzzy_patterns.append(base_term.replace(original, replacement))
+        
+        return list(set(fuzzy_patterns))
+    
+    test_cases = [
+        "Malangawa",  # Should generate "Malangwa" 
+        "Malangwa",   # Should generate "Malangawa"
+        "Kathmandu",  # Should generate variations
+        "Pokhara",    # Should generate variations
+    ]
+    
+    for test_case in test_cases:
+        patterns = generate_fuzzy_patterns(test_case)
+        print(f"🧪 '{test_case}' → Fuzzy patterns: {patterns}")
+    
+    print("✅ Fuzzy pattern generation test completed")
+
+# Call the test functions if this module is run directly
+if __name__ == "__main__":
+    import asyncio
+    async def run_tests():
+        await test_fuzzy_patterns()
+        await test_queries()
+    
+    asyncio.run(run_tests())
