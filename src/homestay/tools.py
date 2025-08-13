@@ -903,12 +903,13 @@ async def enhanced_filter_homestays(filter_request: HomestayFilterRequest) -> Ho
         
         cursor = collection.find(
             mongo_filter,
-            {"homestayId": 1, "_id": 0}
+            {"homestayId": 1, "homeStayName": 1, "_id": 0}
         ).sort(sort_criteria).skip(filter_request.skip or 0).limit(filter_request.limit or 100)
         
         # Extract usernames
         homestays = await cursor.to_list(length=None)
         usernames = [homestay.get("homestayId") for homestay in homestays if homestay.get("homestayId")]
+        homestay_names = [homestay.get("homeStayName") for homestay in homestays if homestay.get("homeStayName")]
         
         # Generate suggestions for better filtering
         suggestions = await generate_filter_suggestions(filter_request, filtered_count)
@@ -917,6 +918,7 @@ async def enhanced_filter_homestays(filter_request: HomestayFilterRequest) -> Ho
         
         return HomestayFilterResponse(
             homestayUsernames=usernames,
+            homestayNames=homestay_names,
             totalCount=total_count,
             filteredCount=filtered_count,
             appliedFilters=mongo_filter,
