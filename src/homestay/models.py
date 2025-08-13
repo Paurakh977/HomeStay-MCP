@@ -516,6 +516,7 @@ class HomestayFilterRequest(BaseModel):
 class HomestayFilterResponse(BaseModel):
     """Enhanced response with additional metadata"""
     homestay_usernames: List[str] = Field(alias="homestayUsernames")
+    homestay_names: List[str] = Field(alias="homestayNames")
     total_count: int = Field(alias="totalCount")
     filtered_count: int = Field(alias="filteredCount")
     applied_filters: Dict[str, Any] = Field(alias="appliedFilters")
