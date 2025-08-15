@@ -4,6 +4,7 @@ from .models import HomestayFilterRequest, HomestayFilterResponse
 from .database import db_instance
 from typing import Dict, Any
 import os
+import builtins
 from contextlib import asynccontextmanager
 from .models import EnhancedFeatureSearchHelper
 
@@ -54,7 +55,10 @@ async def search_homestays_tool(
     limit: int = 100,
     sort_order: str = "desc",
     natural_language_description: str = None,
-    logical_operator: str = "AND"
+    logical_operator: str = "AND",
+    # Homestay type (accept both aliases)
+    type: str = None,
+    homestay_type: str = None,
 ) -> HomestayFilterResponse:
     """🔧 ENHANCED tool with intelligent keyword mapping and improved logical operator handling"""
     
@@ -70,7 +74,11 @@ async def search_homestays_tool(
     final_logical_operator = extracted_filters.get('logical_operator', logical_operator)
 
     # 🔧 CRITICAL PARAMETER VALIDATION - Sanitize inputs FIRST
-    print(f"🔍 RAW PARAMETERS - any_local_attractions: {any_local_attractions} (type: {type(any_local_attractions)})")
+    print(f"🔍 RAW PARAMETERS - any_local_attractions: {any_local_attractions} (type: {builtins.type(any_local_attractions)})")
+    if type is not None:
+        print(f"🔍 RAW PARAMETERS - type: {type} (type: {builtins.type(type)})")
+    if homestay_type is not None:
+        print(f"🔍 RAW PARAMETERS - homestay_type: {homestay_type} (type: {builtins.type(homestay_type)})")
 
     # Validate and sanitize list parameters to prevent type errors
     def sanitize_list(value):
@@ -248,12 +256,38 @@ async def search_homestays_tool(
     if not min_average_rating and extracted_filters.get('min_average_rating'):
         min_average_rating = extracted_filters.get('min_average_rating')
 
+    # Homestay type via NL or explicit params.
+    def _normalize_homestay_type(val: Any) -> Any:
+        if val is None:
+            return None
+        v = str(val).strip().lower()
+        # Map common synonyms
+        synonym_map = {
+            'public': 'community',
+            'community-based': 'community',
+            'community based': 'community',
+            'community-managed': 'community',
+            'community managed': 'community',
+            'community': 'community',
+            'private': 'private',
+        }
+        return synonym_map.get(v, v)
+
+    detected_type = extracted_filters.get('homestay_type')
+    explicit_type = _normalize_homestay_type(homestay_type) or _normalize_homestay_type(type)
+    final_homestay_type = explicit_type or _normalize_homestay_type(detected_type)
+    if final_homestay_type not in (None, 'community', 'private'):
+        print(f"⚠️ WARNING - Invalid homestay type received: {final_homestay_type}, ignoring it")
+        final_homestay_type = None
+
     print(f"🔍 SANITIZED PARAMETERS - any_local_attractions: {any_local_attractions}")
     print(f"🔍 SANITIZED PARAMETERS - local_attractions: {local_attractions}")
     print(f"🔍 SANITIZED PARAMETERS - any_infrastructure: {any_infrastructure}")
     print(f"🔍 SANITIZED PARAMETERS - infrastructure: {infrastructure}")
     print(f"🔍 SANITIZED PARAMETERS - any_tourism_services: {any_tourism_services}")
     print(f"🔍 SANITIZED PARAMETERS - tourism_services: {tourism_services}")
+    if final_homestay_type:
+        print(f"🔍 SANITIZED PARAMETERS - homestay_type: {final_homestay_type}")
     
     filter_request = HomestayFilterRequest(
         province=province,
@@ -269,6 +303,9 @@ async def search_homestays_tool(
         infrastructure=infrastructure,
         any_tourism_services=any_tourism_services,
         tourism_services=tourism_services,
+
+        # Basic homestay info
+        homestay_type=final_homestay_type,
 
         # Other filters
         min_average_rating=min_average_rating,

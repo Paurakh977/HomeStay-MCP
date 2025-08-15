@@ -296,6 +296,32 @@ class EnhancedFeatureSearchHelper:
                 filters['min_average_rating'] = float(match.group(1))
                 break
 
+        # 🔧 HOMESTAY TYPE EXTRACTION - detect 'private' vs 'community' from NL query
+        type_patterns = {
+            'private': [
+                r'\bprivate\s+home\s*stay(s)?\b',
+                r'\bprivate\s+homestay(s)?\b',
+                r'\bprivate\s+stay(s)?\b',
+                r'\bonly\s+private\b',
+                r'\bjust\s+private\b',
+            ],
+            'community': [
+                r'\bcommunity(?:-based|-managed)?\s+home\s*stay(s)?\b',
+                r'\bcommunity(?:-based|-managed)?\s+homestay(s)?\b',
+                r'\bcommunity\s+stay(s)?\b',
+                r'\bpublic\s+homestay(s)?\b',
+                r'\bcommunity\s+(?:ones|options)\b',
+            ],
+        }
+        matched_types = set()
+        for t, pats in type_patterns.items():
+            for pat in pats:
+                if re.search(pat, query_lower):
+                    matched_types.add(t)
+                    break
+        if len(matched_types) == 1:
+            filters['homestay_type'] = next(iter(matched_types))
+
         return filters
     
     @classmethod
