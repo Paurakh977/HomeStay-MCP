@@ -1,6 +1,11 @@
 import os
+from pathlib import Path
 from motor.motor_asyncio import AsyncIOMotorClient
 from typing import Optional
+from dotenv import load_dotenv
+
+env_path = Path(__file__).resolve().parent.parent.parent / ".env"
+load_dotenv(dotenv_path=env_path)
 
 class HomestayDatabase:
     _instance: Optional['HomestayDatabase'] = None

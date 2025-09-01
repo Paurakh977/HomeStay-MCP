@@ -1,9 +1,13 @@
-import httpx
+import httpx,os
 from mcp.server.fastmcp import FastMCP
 from .models import CreateOfficerData, Officer
 from typing import Dict, Any
+from pathlib import Path
+from dotenv import load_dotenv
 
-API_BASE_URL = "http://localhost:3000"  
+env_path = Path(__file__).resolve().parent.parent.parent / ".env"
+load_dotenv(dotenv_path=env_path) 
+API_BASE_URL =  os.getenv("NEXT_API_BASE") 
 
 async def create_officer(
     officer_data: CreateOfficerData,
